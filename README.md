@@ -9,6 +9,7 @@ A personal Spotify library browser and analyser.
 - Lyrics via [LRCLib](https://lrclib.net/) → [Genius](https://genius.com/) fallback chain
 - Mood timeline and genre analytics with Chart.js visualisation
 - Mashup partner suggestions (KNN over audio features + lyric embeddings)
+- Mashup tab: compare any two library tracks side by side with a compatibility score (0–100), per-feature diffs, and hover notes based on harmonic rules
 - Background sync jobs with live progress panel in the UI
 
 ## Requirements

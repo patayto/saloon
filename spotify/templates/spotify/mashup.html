@@ -1,0 +1,122 @@
+{% load spotify_extras %}
+<div class="flex gap-0 min-h-[calc(100vh-180px)]" id="mashup-root">
+
+  <!-- Slot 1: left track column (37.5%) -->
+  <div class="flex flex-col" style="width:37.5%">
+    <div class="relative mb-3 pr-3">
+      <input
+        id="slot-1-search"
+        type="text"
+        placeholder="Search for a track…"
+        autocomplete="off"
+        oninput="mashupSearch(1, this.value)"
+        class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm placeholder-gray-500 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500"
+      >
+      <div id="slot-1-results" class="absolute z-20 top-full left-0 right-3 mt-1"></div>
+    </div>
+    <div id="slot-1-panel" class="flex-1 bg-gray-900 border border-gray-800 rounded-xl overflow-y-auto mr-3">
+      <div class="flex items-center justify-center h-48 text-gray-600 text-sm">
+        Search for a track above
+      </div>
+    </div>
+  </div>
+
+  <!-- Compat column (25%) -->
+  <div class="flex flex-col" style="width:25%">
+    <div class="mb-3 h-9"></div><!-- spacer matching search input height -->
+    <div id="compat-panel" class="flex-1 border border-gray-800 rounded-xl overflow-y-auto">
+      <div class="flex items-center justify-center h-48 text-gray-600 text-xs text-center px-4">
+        Select two tracks to see compatibility
+      </div>
+    </div>
+  </div>
+
+  <!-- Slot 2: right track column (37.5%) -->
+  <div class="flex flex-col" style="width:37.5%">
+    <div class="relative mb-3 pl-3">
+      <input
+        id="slot-2-search"
+        type="text"
+        placeholder="Search for a track…"
+        autocomplete="off"
+        oninput="mashupSearch(2, this.value)"
+        class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm placeholder-gray-500 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500"
+      >
+      <div id="slot-2-results" class="absolute z-20 top-full left-3 right-0 mt-1"></div>
+    </div>
+    <div id="slot-2-panel" class="flex-1 bg-gray-900 border border-gray-800 rounded-xl overflow-y-auto ml-3">
+      <div class="flex items-center justify-center h-48 text-gray-600 text-sm">
+        Search for a track above
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function() {
+  var _slot1Id = '';
+  var _slot2Id = '';
+  var _debounceTimers = {};
+
+  // Dismiss search results when clicking outside
+  document.addEventListener('click', function(e) {
+    [1, 2].forEach(function(slot) {
+      var results = document.getElementById('slot-' + slot + '-results');
+      var input = document.getElementById('slot-' + slot + '-search');
+      if (results && input && !results.contains(e.target) && e.target !== input) {
+        results.innerHTML = '';
+      }
+    });
+  });
+
+  window.mashupSearch = function(slot, q) {
+    clearTimeout(_debounceTimers[slot]);
+    var resultsEl = document.getElementById('slot-' + slot + '-results');
+    if (!q.trim()) { resultsEl.innerHTML = ''; return; }
+    _debounceTimers[slot] = setTimeout(function() {
+      htmx.ajax('GET', '{% url "mashup_search" %}?slot=' + slot + '&q=' + encodeURIComponent(q), {
+        target: '#slot-' + slot + '-results',
+        swap: 'innerHTML'
+      });
+    }, 300);
+  };
+
+  window.selectTrack = function(slot, trackId, trackName) {
+    document.getElementById('slot-' + slot + '-search').value = trackName;
+    document.getElementById('slot-' + slot + '-results').innerHTML = '';
+
+    if (slot == 1) _slot1Id = trackId;
+    else _slot2Id = trackId;
+
+    htmx.ajax('GET', '{% url "mashup_track_detail" track_id="__ID__" %}'.replace('__ID__', trackId), {
+      target: '#slot-' + slot + '-panel',
+      swap: 'innerHTML'
+    });
+
+    if (_slot1Id && _slot2Id) {
+      htmx.ajax('GET', '{% url "mashup_compat" %}?t1=' + _slot1Id + '&t2=' + _slot2Id, {
+        target: '#compat-panel',
+        swap: 'innerHTML'
+      });
+    }
+  };
+
+  // Sync compat header height to match track panel headers after each swap
+  function syncCompatLayout() {
+    var h1 = document.querySelector('#slot-1-panel .mashup-header');
+    var h2 = document.querySelector('#slot-2-panel .mashup-header');
+    var compHead = document.getElementById('compat-score-section');
+    if (!compHead || (!h1 && !h2)) return;
+    var maxH = Math.max(h1 ? h1.offsetHeight : 0, h2 ? h2.offsetHeight : 0);
+    if (maxH > 0) compHead.style.minHeight = maxH + 'px';
+  }
+
+  document.body.addEventListener('htmx:afterSwap', function(e) {
+    var id = e.detail.target && e.detail.target.id;
+    if (id === 'slot-1-panel' || id === 'slot-2-panel' || id === 'compat-panel') {
+      setTimeout(syncCompatLayout, 30);
+    }
+  });
+})();
+</script>

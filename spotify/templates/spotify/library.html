@@ -52,6 +52,7 @@
       <p id="subtitle-audio-features" class="text-sm text-gray-400 mt-1 hidden">{{ af_total_count }} audio feature{{ af_total_count|pluralize }}</p>
       <p id="subtitle-playlists" class="text-sm text-gray-400 mt-1 hidden">{{ playlists_count }} playlist{{ playlists_count|pluralize }}</p>
       <p id="subtitle-analysis" class="text-sm text-gray-400 mt-1 hidden">Mood &amp; genre analytics</p>
+      <p id="subtitle-mashup" class="text-sm text-gray-400 mt-1 hidden">Compare two tracks side by side</p>
     </div>
     <div class="flex items-center gap-3">
 
@@ -86,6 +87,9 @@
 
       <!-- Analysis-specific actions (hidden by default; no actions needed) -->
       <div id="actions-analysis" class="hidden flex items-center gap-3"></div>
+
+      <!-- Mashup-specific actions (hidden by default; no actions needed) -->
+      <div id="actions-mashup" class="hidden flex items-center gap-3"></div>
 
       <!-- Playlists-specific actions (hidden by default) -->
       <div id="actions-playlists" class="hidden flex items-center gap-3">
@@ -131,6 +135,7 @@
       <button id="tab-audio-features" onclick="switchTab('audio-features')" class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-transparent text-gray-400 hover:text-gray-200">Audio Features</button>
       <button id="tab-playlists"      onclick="switchTab('playlists')"      class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-transparent text-gray-400 hover:text-gray-200">Playlists</button>
       <button id="tab-analysis"       onclick="switchTab('analysis')"       class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-transparent text-gray-400 hover:text-gray-200">Analysis</button>
+      <button id="tab-mashup"         onclick="switchTab('mashup')"         class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-transparent text-gray-400 hover:text-gray-200">Mashup</button>
     </nav>
   </div>
 
@@ -191,6 +196,13 @@
     </div>
   </div>
 
+  <!-- Mashup pane (hidden by default, lazy loaded on first tab activation) -->
+  <div id="pane-mashup" class="hidden">
+    <div id="mashup-content">
+      <!-- Loaded via HTMX on first tab activation -->
+    </div>
+  </div>
+
   <!-- Playlists pane (hidden by default, lazy loaded on first tab activation) -->
   <div id="pane-playlists" class="hidden">
     <div class="mb-4 flex gap-2">
@@ -220,10 +232,11 @@
 </div>
 
 <script>
-  var TABS = ['library', 'audio-features', 'playlists', 'analysis'];
+  var TABS = ['library', 'audio-features', 'playlists', 'analysis', 'mashup'];
   var afLoaded = false;
   var playlistsLoaded = false;
   var analysisLoaded = false;
+  var mashupLoaded = false;
 
   function switchTab(name) {
     TABS.forEach(function(tab) {
@@ -273,6 +286,15 @@
         swap: 'innerHTML'
       });
       analysisLoaded = true;
+    }
+
+    // Lazy-load mashup on first activation
+    if (name === 'mashup' && !mashupLoaded) {
+      htmx.ajax('GET', '{% url "mashup_page" %}', {
+        target: '#mashup-content',
+        swap: 'innerHTML'
+      });
+      mashupLoaded = true;
     }
 
     history.replaceState(null, '', '#' + name);

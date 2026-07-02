@@ -86,6 +86,105 @@ def lyric_similarity(track_id: str, candidate_ids: list[str], model_name: str = 
     }
 
 
+_BAR_RULES: dict[str, list[tuple]] = {
+    "energy":           [(0.1, "green", "Matched energy — smooth transition"), (0.2, "amber", "Slight energy shift — works for buildup/breakdown"), (1.0, "red", "Energy clash — jarring without EQing")],
+    "danceability":     [(0.1, "green", "Matched groove — floor stays full"), (0.2, "amber", "Slight groove difference — minor disruption"), (1.0, "red", "Groove mismatch — crowd energy may break")],
+    "valence":          [(0.15, "green", "Similar mood — consistent vibe"), (0.3, "amber", "Moderate mood shift — works as contrast"), (1.0, "red", "Strong mood contrast — intentional or jarring")],
+    "acousticness":     [(0.2, "green", "Similar acoustic texture"), (0.4, "amber", "Noticeable texture shift"), (1.0, "red", "Very different textures — stark contrast")],
+    "instrumentalness": [(0.2, "green", "Similar vocal/instrumental balance"), (0.4, "amber", "Different vocal presence — may clash"), (1.0, "red", "One is vocal-heavy, one is not")],
+    "liveness":         [(0.2, "green", "Similar live/studio feel"), (0.4, "amber", "Noticeable difference in live feel"), (1.0, "red", "One sounds live, one is studio — texture clash")],
+    "speechiness":      [(0.1, "green", "Similar speech content"), (0.3, "amber", "Different speech density"), (1.0, "red", "Very different vocal/speech texture")],
+}
+_LOUDNESS_RULES = [(2.0, "green", "Matched loudness — no gain riding needed"), (5.0, "amber", "Moderate gap — adjust gain"), (99.0, "red", "Large loudness gap — significant gain adjustment needed")]
+_BPM_RULES = [(5.0, "green", "Perfect BPM match — will blend seamlessly"), (10.0, "amber", "Close BPM — minor pitch-shifting may help"), (20.0, "amber", "Noticeable BPM gap — beatmatching needed"), (999.0, "red", "Large BPM gap — consider half-time or double-time")]
+
+
+def _classify(diff: float, rules: list[tuple]) -> tuple[str, str]:
+    for threshold, color, tip in rules:
+        if diff <= threshold:
+            return color, tip
+    return rules[-1][1], rules[-1][2]
+
+
+def compute_pairwise_compat(af1: "AudioFeatures", af2: "AudioFeatures") -> dict:
+    bpm_diff_pct = _bpm_diff_pct(af1.tempo, af2.tempo)
+    kc = _key_compat(af1.key, af1.mode, af2.key, af2.mode)
+    c1_num, c1_let = _camelot(af1.key, af1.mode)
+    c2_num, c2_let = _camelot(af2.key, af2.mode)
+
+    energy_diff = abs(af1.energy - af2.energy)
+    dance_diff = abs(af1.danceability - af2.danceability)
+    valence_diff = abs(af1.valence - af2.valence)
+    bpm_score = max(0.0, 40.0 - bpm_diff_pct * 2)
+    key_score = {"perfect": 35, "compatible": 25, "incompatible": 0}[kc]
+    score = round(bpm_score + key_score + (1 - energy_diff) * 10 + (1 - dance_diff) * 8 + (1 - valence_diff) * 7)
+
+    key_tips = {
+        "perfect": f"Perfect key match ({c1_num}{c1_let} = {c2_num}{c2_let}) — fully harmonic",
+        "compatible": f"Compatible keys ({c1_num}{c1_let} / {c2_num}{c2_let}) — Camelot-adjacent, minor key tension",
+        "incompatible": f"Incompatible keys ({c1_num}{c1_let} / {c2_num}{c2_let}) — will clash harmonically",
+    }
+
+    bar_features = []
+    for field in ["energy", "danceability", "valence", "acousticness", "instrumentalness", "liveness", "speechiness"]:
+        v1, v2 = getattr(af1, field), getattr(af2, field)
+        diff = abs(v1 - v2)
+        color, tip = _classify(diff, _BAR_RULES[field])
+        sign = "+" if v2 > v1 else ("-" if v1 > v2 else "±")
+        bar_features.append({
+            "key": field,
+            "label": field.capitalize(),
+            "val1": round(v1, 2),
+            "val2": round(v2, 2),
+            "diff_display": f"{sign}{diff:.2f}" if diff else "±0.00",
+            "color": color,
+            "tooltip": tip,
+        })
+
+    loudness_diff = abs(af1.loudness - af2.loudness)
+    ld_color, ld_tip = _classify(loudness_diff, _LOUDNESS_RULES)
+    bpm_color, bpm_tip = _classify(bpm_diff_pct, _BPM_RULES)
+    ts_same = af1.time_signature == af2.time_signature
+
+    numeric_features = [
+        {
+            "key": "tempo", "label": "BPM",
+            "val1": f"{af1.tempo:.1f}", "val2": f"{af2.tempo:.1f}",
+            "diff_display": f"{bpm_diff_pct:.1f}%",
+            "color": bpm_color, "tooltip": bpm_tip,
+        },
+        {
+            "key": "loudness", "label": "Loudness",
+            "val1": f"{af1.loudness:.1f} dB", "val2": f"{af2.loudness:.1f} dB",
+            "diff_display": f"{loudness_diff:.1f} dB",
+            "color": ld_color, "tooltip": ld_tip,
+        },
+        {
+            "key": "key", "label": "Key",
+            "val1": f"{c1_num}{c1_let}", "val2": f"{c2_num}{c2_let}",
+            "diff_display": kc.capitalize(),
+            "color": {"perfect": "green", "compatible": "amber", "incompatible": "red"}[kc],
+            "tooltip": key_tips[kc],
+        },
+        {
+            "key": "time_signature", "label": "Time Sig",
+            "val1": f"{af1.time_signature}/4", "val2": f"{af2.time_signature}/4",
+            "diff_display": "Match" if ts_same else f"{af1.time_signature} vs {af2.time_signature}",
+            "color": "green" if ts_same else "red",
+            "tooltip": "Same time signature — rhythmic compatibility" if ts_same else "Different time signatures — complex polyrhythm, difficult mix",
+        },
+    ]
+
+    return {
+        "score": max(0, min(100, score)),
+        "key_compat": kc,
+        "camelot_1": f"{c1_num}{c1_let}",
+        "camelot_2": f"{c2_num}{c2_let}",
+        "bar_features": bar_features,
+        "numeric_features": numeric_features,
+    }
+
+
 def get_candidates(track_id: str, n: int = 50) -> list[dict]:
     current_count = AudioFeatures.objects.count()
     if _cache.get("af_count") != current_count:

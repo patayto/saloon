@@ -779,3 +779,54 @@ def _af_table_context(request: HttpRequest) -> dict:
         "af_sort_dirs": sort_dirs,
         "af_total_count": paginator.count,
     }
+
+
+# ── Mashup tab ────────────────────────────────────────────────────────────────
+
+def mashup_page(request: HttpRequest) -> HttpResponse:
+    return render(request, "spotify/mashup.html")
+
+
+def mashup_search(request: HttpRequest) -> HttpResponse:
+    q = request.GET.get("q", "").strip()
+    slot = request.GET.get("slot", "1")
+    tracks = []
+    if q:
+        tracks = list(
+            Track.objects
+            .filter(saved__isnull=False, name__icontains=q)
+            .prefetch_related("artists")
+            .order_by("name")[:10]
+        )
+    return render(request, "spotify/partials/mashup_search_results.html", {
+        "tracks": tracks, "slot": slot, "q": q,
+    })
+
+
+def mashup_track_detail(request: HttpRequest, track_id: str) -> HttpResponse:
+    track = get_object_or_404(
+        Track.objects.select_related("album").prefetch_related("artists"),
+        id=track_id,
+    )
+    af = AudioFeatures.objects.filter(track_id=track_id).first()
+    saved = SavedTrack.objects.filter(track_id=track_id).first()
+    lyrics = TrackLyrics.objects.filter(track_id=track_id).first()
+    return render(request, "spotify/partials/mashup_track_detail.html", {
+        "track": track, "saved": saved, "af": af, "lyrics": lyrics,
+    })
+
+
+def mashup_compat(request: HttpRequest) -> HttpResponse:
+    from analysis.mashup import compute_pairwise_compat
+    t1 = request.GET.get("t1", "")
+    t2 = request.GET.get("t2", "")
+    af1 = AudioFeatures.objects.filter(track_id=t1).first() if t1 else None
+    af2 = AudioFeatures.objects.filter(track_id=t2).first() if t2 else None
+    compat = compute_pairwise_compat(af1, af2) if (af1 and af2) else None
+    score_color = "#374151"
+    if compat:
+        s = compat["score"]
+        score_color = "#22c55e" if s >= 75 else "#eab308" if s >= 50 else "#f97316" if s >= 25 else "#ef4444"
+    return render(request, "spotify/partials/mashup_compat.html", {
+        "compat": compat, "af1": af1, "af2": af2, "score_color": score_color,
+    })

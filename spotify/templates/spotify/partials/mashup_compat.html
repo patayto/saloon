@@ -1,0 +1,83 @@
+{% if compat %}
+<div class="p-3 h-full flex flex-col">
+
+  <!-- Score section — height synced to track headers via JS -->
+  <div id="compat-score-section" class="pb-4 border-b border-gray-800 mb-4 flex flex-col items-center justify-center">
+    <!-- Score circle -->
+    <div class="relative inline-flex items-center justify-center mb-2">
+      <svg viewBox="0 0 36 36" class="w-20 h-20">
+        <circle cx="18" cy="18" r="15.9155" fill="none" stroke="#374151" stroke-width="2.5"/>
+        <circle cx="18" cy="18" r="15.9155" fill="none" stroke="{{ score_color }}" stroke-width="2.5"
+          stroke-dasharray="{{ compat.score }},100" stroke-linecap="round"
+          transform="rotate(-90 18 18)"/>
+      </svg>
+      <span class="absolute text-lg font-bold text-white">{{ compat.score }}</span>
+    </div>
+    <p class="text-xs text-gray-500">Mashup Score</p>
+    <!-- Key compat badge -->
+    <span class="mt-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium
+      {% if compat.key_compat == 'perfect' %}bg-green-900 text-green-300
+      {% elif compat.key_compat == 'compatible' %}bg-amber-900 text-amber-300
+      {% else %}bg-red-900 text-red-300{% endif %}">
+      {{ compat.camelot_1 }} / {{ compat.camelot_2 }}
+    </span>
+  </div>
+
+  <!-- Bar feature diffs (same order: energy, danceability, valence, acousticness, instrumentalness, liveness, speechiness) -->
+  <div class="space-y-2.5 mb-3">
+    {% for f in compat.bar_features %}
+    <div class="flex items-center justify-center h-5">
+      <span class="group relative inline-flex">
+        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-mono font-medium cursor-default
+          {% if f.color == 'green' %}bg-green-900/60 text-green-300
+          {% elif f.color == 'amber' %}bg-amber-900/60 text-amber-300
+          {% else %}bg-red-900/60 text-red-300{% endif %}">
+          {{ f.diff_display }}
+        </span>
+        <!-- Tooltip -->
+        <span class="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 rounded bg-gray-800 border border-gray-700 px-2 py-1.5 text-xs text-gray-200 opacity-0 group-hover:opacity-100 transition-opacity z-30 text-center shadow-xl">
+          <span class="font-medium text-gray-100 block mb-0.5">{{ f.label }}</span>
+          {{ f.tooltip }}
+        </span>
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Numeric feature diffs (tempo, loudness, key, time sig) -->
+  <div class="border-t border-gray-800 pt-3 grid grid-cols-2 gap-x-2 gap-y-2">
+    {% for f in compat.numeric_features %}
+    <div class="flex items-center justify-center h-5">
+      <span class="group relative inline-flex">
+        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-mono font-medium cursor-default
+          {% if f.color == 'green' %}bg-green-900/60 text-green-300
+          {% elif f.color == 'amber' %}bg-amber-900/60 text-amber-300
+          {% else %}bg-red-900/60 text-red-300{% endif %}">
+          {{ f.diff_display }}
+        </span>
+        <!-- Tooltip -->
+        <span class="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 rounded bg-gray-800 border border-gray-700 px-2 py-1.5 text-xs text-gray-200 opacity-0 group-hover:opacity-100 transition-opacity z-30 text-center shadow-xl">
+          <span class="font-medium text-gray-100 block mb-0.5">{{ f.label }}</span>
+          <span class="text-gray-400">{{ f.val1 }} → {{ f.val2 }}</span><br>
+          {{ f.tooltip }}
+        </span>
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+
+</div>
+{% else %}
+<div class="flex flex-col items-center justify-center h-full text-center px-4">
+  {% if af1 and not af2 %}
+    <p class="text-xs text-gray-500">Select a second track to compare</p>
+  {% elif af2 and not af1 %}
+    <p class="text-xs text-gray-500">Select a first track to compare</p>
+  {% elif af1 or af2 %}
+    <p class="text-xs text-gray-500">One or both tracks are missing audio features</p>
+    <p class="text-xs text-gray-600 mt-1">Enrich tracks from the Library view first</p>
+  {% else %}
+    <p class="text-xs text-gray-500">Select two tracks to see compatibility</p>
+  {% endif %}
+</div>
+{% endif %}

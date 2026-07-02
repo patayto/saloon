@@ -30,4 +30,8 @@ urlpatterns = [
     path("playlists/<str:playlist_id>/sync-audio-features/status/<str:job_id>/", spotify_views.sync_playlist_audio_features_status, name="sync_playlist_audio_features_status"),
     path("playlists/<str:playlist_id>/sync-lyrics/", spotify_views.sync_playlist_lyrics_view, name="sync_playlist_lyrics"),
     path("playlists/<str:playlist_id>/sync-lyrics/status/<str:job_id>/", spotify_views.sync_playlist_lyrics_status, name="sync_playlist_lyrics_status"),
+    path("mashup/", spotify_views.mashup_page, name="mashup_page"),
+    path("mashup/search/", spotify_views.mashup_search, name="mashup_search"),
+    path("mashup/track/<str:track_id>/", spotify_views.mashup_track_detail, name="mashup_track_detail"),
+    path("mashup/compat/", spotify_views.mashup_compat, name="mashup_compat"),
 ]

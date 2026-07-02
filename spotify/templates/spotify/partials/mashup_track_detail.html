@@ -1,0 +1,147 @@
+{% load spotify_extras %}
+<div class="p-4">
+
+  <!-- Header — height synced with compat score section via JS -->
+  <div class="mashup-header pb-4 border-b border-gray-800 mb-4">
+    <h3 class="text-base font-bold text-white leading-tight">{{ track.name }}</h3>
+    <p class="text-sm text-gray-400 mt-0.5">
+      {% for artist in track.artists.all %}{{ artist.name }}{% if not forloop.last %}, {% endif %}{% endfor %}
+    </p>
+    <div class="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+      <div class="col-span-2">
+        <span class="text-gray-500">Album</span>
+        <p class="text-gray-300 mt-0.5 truncate">{{ track.album.name }}
+          <span class="text-gray-500 ml-1">{{ track.album.release_date|slice:":4" }}</span>
+        </p>
+      </div>
+      <div>
+        <span class="text-gray-500">Duration</span>
+        <p class="text-gray-300 mt-0.5 tabular-nums">{{ track.duration_ms|duration_ms }}</p>
+      </div>
+      <div>
+        <span class="text-gray-500">Popularity</span>
+        <div class="flex items-center gap-2 mt-0.5">
+          <div class="flex-1 bg-gray-700 rounded-full h-1.5 max-w-[60px]">
+            <div class="bg-green-500 h-1.5 rounded-full" style="width: {{ track.popularity }}%"></div>
+          </div>
+          <span class="text-gray-300 tabular-nums">{{ track.popularity }}</span>
+        </div>
+      </div>
+      {% if saved %}
+      <div>
+        <span class="text-gray-500">Added</span>
+        <p class="text-gray-300 mt-0.5">{{ saved.added_at|date:"Y-m-d" }}</p>
+      </div>
+      {% endif %}
+      {% if track.explicit %}
+      <div>
+        <span class="inline-block bg-gray-600 text-gray-200 text-xs font-bold px-1 rounded mt-3">E</span>
+      </div>
+      {% endif %}
+    </div>
+    {% if track.spotify_url %}
+    <a href="{{ track.spotify_url }}" target="_blank" rel="noopener"
+       class="inline-flex items-center gap-1 text-xs text-green-500 hover:text-green-400 transition-colors mt-3">
+      <svg class="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
+      </svg>
+      Open in Spotify
+    </a>
+    {% endif %}
+  </div>
+
+  <!-- Audio Features -->
+  <div class="mb-4">
+    <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Audio Features</h4>
+    {% if af %}
+    <div class="space-y-2.5">
+      <div class="flex items-center gap-3 h-5">
+        <span class="w-28 text-xs text-gray-500 flex-shrink-0">Energy</span>
+        <div class="flex-1 bg-gray-700 rounded-full h-1.5">
+          <div class="bg-green-500 h-1.5 rounded-full" style="width: {{ af.energy|to_pct }}%"></div>
+        </div>
+        <span class="w-10 text-right text-xs text-gray-300 tabular-nums">{{ af.energy|floatformat:2 }}</span>
+      </div>
+      <div class="flex items-center gap-3 h-5">
+        <span class="w-28 text-xs text-gray-500 flex-shrink-0">Danceability</span>
+        <div class="flex-1 bg-gray-700 rounded-full h-1.5">
+          <div class="bg-green-500 h-1.5 rounded-full" style="width: {{ af.danceability|to_pct }}%"></div>
+        </div>
+        <span class="w-10 text-right text-xs text-gray-300 tabular-nums">{{ af.danceability|floatformat:2 }}</span>
+      </div>
+      <div class="flex items-center gap-3 h-5">
+        <span class="w-28 text-xs text-gray-500 flex-shrink-0">Valence</span>
+        <div class="flex-1 bg-gray-700 rounded-full h-1.5">
+          <div class="bg-purple-500 h-1.5 rounded-full" style="width: {{ af.valence|to_pct }}%"></div>
+        </div>
+        <span class="w-10 text-right text-xs text-gray-300 tabular-nums">{{ af.valence|floatformat:2 }}</span>
+      </div>
+      <div class="flex items-center gap-3 h-5">
+        <span class="w-28 text-xs text-gray-500 flex-shrink-0">Acousticness</span>
+        <div class="flex-1 bg-gray-700 rounded-full h-1.5">
+          <div class="bg-yellow-500 h-1.5 rounded-full" style="width: {{ af.acousticness|to_pct }}%"></div>
+        </div>
+        <span class="w-10 text-right text-xs text-gray-300 tabular-nums">{{ af.acousticness|floatformat:2 }}</span>
+      </div>
+      <div class="flex items-center gap-3 h-5">
+        <span class="w-28 text-xs text-gray-500 flex-shrink-0">Instrumentalness</span>
+        <div class="flex-1 bg-gray-700 rounded-full h-1.5">
+          <div class="bg-blue-500 h-1.5 rounded-full" style="width: {{ af.instrumentalness|to_pct }}%"></div>
+        </div>
+        <span class="w-10 text-right text-xs text-gray-300 tabular-nums">{{ af.instrumentalness|floatformat:2 }}</span>
+      </div>
+      <div class="flex items-center gap-3 h-5">
+        <span class="w-28 text-xs text-gray-500 flex-shrink-0">Liveness</span>
+        <div class="flex-1 bg-gray-700 rounded-full h-1.5">
+          <div class="bg-orange-500 h-1.5 rounded-full" style="width: {{ af.liveness|to_pct }}%"></div>
+        </div>
+        <span class="w-10 text-right text-xs text-gray-300 tabular-nums">{{ af.liveness|floatformat:2 }}</span>
+      </div>
+      <div class="flex items-center gap-3 h-5">
+        <span class="w-28 text-xs text-gray-500 flex-shrink-0">Speechiness</span>
+        <div class="flex-1 bg-gray-700 rounded-full h-1.5">
+          <div class="bg-pink-500 h-1.5 rounded-full" style="width: {{ af.speechiness|to_pct }}%"></div>
+        </div>
+        <span class="w-10 text-right text-xs text-gray-300 tabular-nums">{{ af.speechiness|floatformat:2 }}</span>
+      </div>
+      <div class="grid grid-cols-2 gap-x-4 gap-y-2 pt-3 border-t border-gray-800 mt-1 text-xs">
+        <div class="flex justify-between h-5 items-center">
+          <span class="text-gray-500">BPM</span>
+          <span class="text-gray-200 tabular-nums">{{ af.tempo|floatformat:1 }}</span>
+        </div>
+        <div class="flex justify-between h-5 items-center">
+          <span class="text-gray-500">Loudness</span>
+          <span class="text-gray-200 tabular-nums">{{ af.loudness|floatformat:1 }} dB</span>
+        </div>
+        <div class="flex justify-between h-5 items-center">
+          <span class="text-gray-500">Key</span>
+          <span class="text-gray-200">{{ af.key|key_name }} {% if af.mode == 1 %}major{% else %}minor{% endif %}</span>
+        </div>
+        <div class="flex justify-between h-5 items-center">
+          <span class="text-gray-500">Time Sig</span>
+          <span class="text-gray-200 tabular-nums">{{ af.time_signature }}/4</span>
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <p class="text-xs text-gray-500 italic">No audio features — enrich this track from the Library view.</p>
+    {% endif %}
+  </div>
+
+  <!-- Lyrics -->
+  <div>
+    <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Lyrics</h4>
+    {% if lyrics %}
+      {% if lyrics.instrumental %}
+        <p class="text-sm text-gray-400 italic">Instrumental.</p>
+      {% elif lyrics.plain_lyrics %}
+        <div class="max-h-64 overflow-y-auto pr-1 text-sm text-gray-300 leading-relaxed whitespace-pre-wrap font-mono scrollbar-thin scrollbar-thumb-gray-700">{{ lyrics.plain_lyrics }}</div>
+      {% else %}
+        <p class="text-xs text-gray-500 italic">Lyrics stored but empty.</p>
+      {% endif %}
+    {% else %}
+      <p class="text-xs text-gray-500 italic">No lyrics — fetch from the Library view.</p>
+    {% endif %}
+  </div>
+
+</div>
