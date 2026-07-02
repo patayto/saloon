@@ -1,9 +1,18 @@
 import json
 
-from django.http import HttpRequest, HttpResponse
+from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import render
 
 from analysis.analytics import mood_timeline
+from analysis.graph import build_graph
+
+
+def graph_page(request: HttpRequest) -> HttpResponse:
+    return render(request, "analysis/partials/graph.html")
+
+
+def graph_data(request: HttpRequest) -> HttpResponse:
+    return JsonResponse(build_graph())
 
 
 def analysis_overview(request: HttpRequest) -> HttpResponse:

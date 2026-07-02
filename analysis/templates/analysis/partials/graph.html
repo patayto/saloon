@@ -1,0 +1,171 @@
+<div>
+  <!-- Controls bar -->
+  <div class="mb-4 flex flex-wrap items-center gap-4">
+    <div class="flex items-center gap-3 text-sm">
+      <label class="flex items-center gap-1.5 cursor-pointer select-none">
+        <input type="checkbox" checked onchange="toggleType(0, this.checked)" class="accent-sky-400">
+        <span class="w-2 h-2 rounded-full inline-block" style="background:#38bdf8"></span> Lyrics
+      </label>
+      <label class="flex items-center gap-1.5 cursor-pointer select-none">
+        <input type="checkbox" checked onchange="toggleType(1, this.checked)" class="accent-indigo-400">
+        <span class="w-2 h-2 rounded-full inline-block" style="background:#818cf8"></span> Audio
+      </label>
+      <label class="flex items-center gap-1.5 cursor-pointer select-none">
+        <input type="checkbox" checked onchange="toggleType(2, this.checked)" class="accent-pink-400">
+        <span class="w-2 h-2 rounded-full inline-block" style="background:#f472b6"></span> Playlists
+      </label>
+      <label class="flex items-center gap-1.5 cursor-pointer select-none">
+        <input type="checkbox" checked onchange="toggleType(3, this.checked)" class="accent-amber-400">
+        <span class="w-2 h-2 rounded-full inline-block" style="background:#fbbf24"></span> Artists
+      </label>
+    </div>
+
+    <span id="graph-edge-count" class="text-xs text-gray-500"></span>
+
+    <div class="flex items-center gap-3 ml-auto">
+      <select
+        id="graph-color-mode"
+        onchange="setColorMode(this.value)"
+        class="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-green-500"
+      >
+        <option value="none">No coloring</option>
+        <option value="valence">Color by valence</option>
+        <option value="energy">Color by energy</option>
+        <option value="sentiment">Color by sentiment</option>
+      </select>
+      <input
+        id="graph-search"
+        type="text"
+        placeholder="Find a track… (Enter)"
+        autocomplete="off"
+        onkeydown="if(event.key==='Enter')searchGo(this.value)"
+        class="w-64 bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm placeholder-gray-500 focus:outline-none focus:border-green-500"
+      >
+    </div>
+  </div>
+
+  <!-- Graph canvas -->
+  <div id="graph-canvas" class="border border-gray-800 rounded-xl bg-gray-900/50 overflow-hidden" style="height: calc(100vh - 300px); min-height: 480px;">
+    <div id="graph-loading" class="h-full flex items-center justify-center text-gray-500 text-sm">Building graph…</div>
+  </div>
+  <p class="mt-2 text-xs text-gray-600">Click a node to isolate its neighborhood · click the background to reset · scroll to zoom</p>
+</div>
+
+<script>
+  var GRAPH_DATA_URL = '{% url "analysis:graph_data" %}';
+  var TYPE_COLORS = ['#38bdf8', '#818cf8', '#f472b6', '#fbbf24']; // lyric, audio, playlist, artist
+  var typeEnabled = [true, true, true, true];
+  var graphColorMode = 'none';
+  var isolated = null; // {id: nodeId, neighbors: Set} or null
+  var GRAPH = null, G_NODES = [], G_LINKS = [];
+
+  fetch(GRAPH_DATA_URL)
+    .then(function(r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(initGraph)
+    .catch(function(err) {
+      document.getElementById('graph-loading').textContent = 'Failed to load graph data (' + err.message + ')';
+    });
+
+  function nid(x) { return (x && x.id !== undefined) ? x.id : x; }
+
+  function initGraph(data) {
+    G_NODES = data.nodes;
+    G_LINKS = data.links.map(function(l) { return {source: l[0], target: l[1], type: l[2], w: l[3]}; });
+
+    var el = document.getElementById('graph-canvas');
+    el.innerHTML = '';
+    GRAPH = ForceGraph()(el)
+      .width(el.clientWidth)
+      .height(el.clientHeight)
+      .backgroundColor('rgba(0,0,0,0)')
+      .nodeLabel(function(n) { return escHtml(n.name) + ' — ' + escHtml(n.artist); })
+      .nodeRelSize(2)
+      .nodeVal(function(n) { return Math.min(n.deg || 1, 20); })
+      .nodeColor(nodeColor)
+      .linkColor(linkColor)
+      .linkWidth(function(l) { return Math.min(l.w, 3) * 0.5; })
+      .d3AlphaDecay(0.05)
+      .onNodeClick(toggleIsolate)
+      .onBackgroundClick(clearIsolate);
+
+    window.addEventListener('resize', function() {
+      GRAPH.width(el.clientWidth).height(el.clientHeight);
+    });
+
+    applyGraphFilters();
+  }
+
+  function applyGraphFilters() {
+    isolated = null;
+    var links = G_LINKS.filter(function(l) { return typeEnabled[l.type]; });
+    G_NODES.forEach(function(n) { n.deg = 0; });
+    links.forEach(function(l) { G_NODES[nid(l.source)].deg++; G_NODES[nid(l.target)].deg++; });
+    GRAPH.graphData({nodes: G_NODES, links: links});
+    document.getElementById('graph-edge-count').textContent =
+      G_NODES.length + ' tracks · ' + links.length + ' connections';
+  }
+
+  function toggleType(typeIdx, on) {
+    typeEnabled[typeIdx] = on;
+    if (GRAPH) applyGraphFilters();
+  }
+
+  function nodeColor(n) {
+    if (isolated && n.id !== isolated.id && !isolated.neighbors.has(n.id)) return 'rgba(107,114,128,0.12)';
+    if (graphColorMode === 'none' || n[graphColorMode] == null) return '#9ca3af';
+    var v = graphColorMode === 'sentiment' ? (n[graphColorMode] + 1) / 2 : n[graphColorMode];
+    return 'hsl(' + Math.round(v * 120) + ', 70%, 55%)'; // red → green
+  }
+
+  function linkColor(l) {
+    if (isolated) {
+      var touches = nid(l.source) === isolated.id || nid(l.target) === isolated.id;
+      return touches ? TYPE_COLORS[l.type] : 'rgba(107,114,128,0.04)';
+    }
+    return TYPE_COLORS[l.type] + '55';
+  }
+
+  function repaint() {
+    // Reassigning the accessors repaints without reheating the simulation
+    GRAPH.nodeColor(GRAPH.nodeColor()).linkColor(GRAPH.linkColor());
+  }
+
+  function toggleIsolate(node) {
+    if (isolated && isolated.id === node.id) { clearIsolate(); return; }
+    var neighbors = new Set();
+    GRAPH.graphData().links.forEach(function(l) {
+      var s = nid(l.source), t = nid(l.target);
+      if (s === node.id) neighbors.add(t);
+      if (t === node.id) neighbors.add(s);
+    });
+    isolated = {id: node.id, neighbors: neighbors};
+    repaint();
+  }
+
+  function clearIsolate() {
+    if (!isolated) return;
+    isolated = null;
+    repaint();
+  }
+
+  function searchGo(q) {
+    q = q.trim().toLowerCase();
+    if (!q || !GRAPH) return;
+    var n = G_NODES.find(function(n) {
+      return n.name.toLowerCase().indexOf(q) !== -1 || n.artist.toLowerCase().indexOf(q) !== -1;
+    });
+    if (!n) return;
+    GRAPH.centerAt(n.x, n.y, 600);
+    GRAPH.zoom(4, 600);
+    toggleIsolate(n);
+  }
+
+  function setColorMode(mode) {
+    graphColorMode = mode;
+    if (GRAPH) repaint();
+  }
+
+  function escHtml(s) {
+    return s.replace(/[&<>]/g, function(c) { return {'&': '&amp;', '<': '&lt;', '>': '&gt;'}[c]; });
+  }
+</script>

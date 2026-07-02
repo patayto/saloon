@@ -36,6 +36,17 @@ def _bpm_diff_pct(a: float, b: float) -> float:
     return round(abs(a - b) / a * 100, 1) if a > 0 else 0.0
 
 
+def af_row(af) -> list[float]:
+    # Circular key encoding so C (0) and B (11) stay adjacent on the circle of fifths
+    return [
+        af.energy, af.danceability, af.valence, af.acousticness,
+        af.instrumentalness, af.loudness, af.speechiness, af.liveness, af.tempo,
+        math.sin(2 * math.pi * af.key / 12),
+        math.cos(2 * math.pi * af.key / 12),
+        float(af.mode),
+    ]
+
+
 def _build() -> dict | None:
     afs = list(
         AudioFeatures.objects
@@ -46,14 +57,7 @@ def _build() -> dict | None:
     if len(afs) < 2:
         return None
 
-    # Circular key encoding so C (0) and B (11) stay adjacent on the circle of fifths
-    X = np.array([[
-        af.energy, af.danceability, af.valence, af.acousticness,
-        af.instrumentalness, af.loudness, af.speechiness, af.liveness, af.tempo,
-        math.sin(2 * math.pi * af.key / 12),
-        math.cos(2 * math.pi * af.key / 12),
-        float(af.mode),
-    ] for af in afs], dtype=np.float64)
+    X = np.array([af_row(af) for af in afs], dtype=np.float64)
 
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
