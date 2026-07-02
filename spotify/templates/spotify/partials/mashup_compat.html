@@ -3,6 +3,10 @@
 
   <!-- Score section — height synced to track headers via JS -->
   <div id="compat-score-section" class="pb-4 border-b border-gray-800 mb-4 flex flex-col items-center justify-center">
+    <!-- Save button -->
+    <div class="mb-3">
+      {% include "spotify/partials/mashup_save_btn.html" with saved=already_saved t1=t1 t2=t2 %}
+    </div>
     <!-- Score circle -->
     <div class="relative inline-flex items-center justify-center mb-2">
       <svg viewBox="0 0 36 36" class="w-20 h-20">

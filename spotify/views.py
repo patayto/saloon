@@ -818,6 +818,7 @@ def mashup_track_detail(request: HttpRequest, track_id: str) -> HttpResponse:
 
 def mashup_compat(request: HttpRequest) -> HttpResponse:
     from analysis.mashup import compute_pairwise_compat
+    from analysis.models import MashupPair
     t1 = request.GET.get("t1", "")
     t2 = request.GET.get("t2", "")
     af1 = AudioFeatures.objects.filter(track_id=t1).first() if t1 else None
@@ -827,6 +828,51 @@ def mashup_compat(request: HttpRequest) -> HttpResponse:
     if compat:
         s = compat["score"]
         score_color = "#22c55e" if s >= 75 else "#eab308" if s >= 50 else "#f97316" if s >= 25 else "#ef4444"
+    id1, id2 = sorted([t1, t2]) if t1 and t2 else (t1, t2)
+    already_saved = MashupPair.objects.filter(track1_id=id1, track2_id=id2).exists() if (id1 and id2) else False
     return render(request, "spotify/partials/mashup_compat.html", {
         "compat": compat, "af1": af1, "af2": af2, "score_color": score_color,
+        "t1": t1, "t2": t2, "already_saved": already_saved,
     })
+
+
+def mashup_pairs(request: HttpRequest) -> HttpResponse:
+    from analysis.models import MashupPair
+    pairs = list(
+        MashupPair.objects
+        .select_related("track1__album", "track2__album", "track1__audio_features", "track2__audio_features")
+        .prefetch_related("track1__artists", "track2__artists")
+        .all()
+    )
+    return render(request, "spotify/partials/mashup_pairs.html", {"pairs": pairs})
+
+
+def mashup_save_pair(request: HttpRequest) -> HttpResponse:
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    from analysis.models import MashupPair
+    from analysis.mashup import compute_pairwise_compat
+    t1 = request.POST.get("t1", "")
+    t2 = request.POST.get("t2", "")
+    if not (t1 and t2):
+        return HttpResponse(status=400)
+    id1, id2 = sorted([t1, t2])
+    af1 = AudioFeatures.objects.filter(track_id=id1).first()
+    af2 = AudioFeatures.objects.filter(track_id=id2).first()
+    score = compute_pairwise_compat(af1, af2)["score"] if (af1 and af2) else 0
+    MashupPair.objects.get_or_create(track1_id=id1, track2_id=id2, defaults={"score": score})
+    return render(request, "spotify/partials/mashup_save_btn.html", {"saved": True, "t1": t1, "t2": t2})
+
+
+def mashup_delete_pair(request: HttpRequest, pair_id: int) -> HttpResponse:
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    from analysis.models import MashupPair
+    MashupPair.objects.filter(id=pair_id).delete()
+    pairs = list(
+        MashupPair.objects
+        .select_related("track1__album", "track2__album", "track1__audio_features", "track2__audio_features")
+        .prefetch_related("track1__artists", "track2__artists")
+        .all()
+    )
+    return render(request, "spotify/partials/mashup_pairs.html", {"pairs": pairs})

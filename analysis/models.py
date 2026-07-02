@@ -49,3 +49,17 @@ class TrackFeatureVector(models.Model):
 
     def __str__(self):
         return f"TrackFeatureVector({self.track_id}, {self.version})"
+
+
+class MashupPair(models.Model):
+    track1 = models.ForeignKey("spotify.Track", on_delete=models.CASCADE, related_name="+")
+    track2 = models.ForeignKey("spotify.Track", on_delete=models.CASCADE, related_name="+")
+    score = models.IntegerField()
+    saved_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [("track1", "track2")]
+        ordering = ["-saved_at"]
+
+    def __str__(self):
+        return f"MashupPair({self.track1_id} / {self.track2_id}, score={self.score})"

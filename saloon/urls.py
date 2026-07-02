@@ -34,4 +34,7 @@ urlpatterns = [
     path("mashup/search/", spotify_views.mashup_search, name="mashup_search"),
     path("mashup/track/<str:track_id>/", spotify_views.mashup_track_detail, name="mashup_track_detail"),
     path("mashup/compat/", spotify_views.mashup_compat, name="mashup_compat"),
+    path("mashup/pairs/", spotify_views.mashup_pairs, name="mashup_pairs"),
+    path("mashup/pairs/save/", spotify_views.mashup_save_pair, name="mashup_save_pair"),
+    path("mashup/pairs/<int:pair_id>/delete/", spotify_views.mashup_delete_pair, name="mashup_delete_pair"),
 ]
