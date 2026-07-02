@@ -1,0 +1,370 @@
+{% extends "spotify/base.html" %}
+{% load spotify_extras %}
+
+{% block content %}
+<div class="max-w-screen-xl mx-auto px-4 py-8">
+
+  <!-- Back link -->
+  <a href="/#playlists"
+     class="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-white transition-colors mb-6">
+    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+      <path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd"/>
+    </svg>
+    Back to Playlists
+  </a>
+
+  <!-- Playlist header -->
+  <div class="flex items-start gap-6 mb-8">
+    <!-- Cover art -->
+    <div class="flex-shrink-0 w-40 h-40 rounded-xl overflow-hidden shadow-2xl bg-gradient-to-br from-violet-600 to-indigo-700">
+      {% if playlist.image_url %}
+        <img src="{{ playlist.image_url }}" alt="{{ playlist.name }}" class="w-full h-full object-cover">
+      {% else %}
+        <div class="w-full h-full flex items-center justify-center">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-16 h-16 text-white/40" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z"/>
+          </svg>
+        </div>
+      {% endif %}
+    </div>
+
+    <!-- Metadata -->
+    <div class="min-w-0 flex-1 pt-1">
+      <p class="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-1">Playlist</p>
+      <h1 class="text-3xl font-bold text-white leading-tight mb-2">{{ playlist.name }}</h1>
+      {% if playlist.description %}
+        <p class="text-sm text-gray-400 mb-3 line-clamp-2">{{ playlist.description }}</p>
+      {% endif %}
+      <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-400">
+        {% if playlist.owner_display_name %}
+          <span class="font-medium text-gray-200">{{ playlist.owner_display_name }}</span>
+          <span class="text-gray-600">·</span>
+        {% endif %}
+        <span>{{ playlist.total_tracks }} track{{ playlist.total_tracks|pluralize }}</span>
+        {% if playlist.created_at %}
+          <span class="text-gray-600">·</span>
+          <span title="Estimated from oldest track added date">Created ~{{ playlist.created_at|date:"N Y" }}</span>
+        {% endif %}
+        {% if playlist.public is not None %}
+          <span class="text-gray-600">·</span>
+          <span>{% if playlist.public %}Public{% else %}Private{% endif %}</span>
+        {% endif %}
+        {% if playlist.collaborative %}
+          <span class="text-gray-600">·</span>
+          <span class="text-yellow-400">Collaborative</span>
+        {% endif %}
+      </div>
+      {% if playlist.spotify_url %}
+        <a href="{{ playlist.spotify_url }}" target="_blank" rel="noopener"
+           class="inline-flex items-center gap-1.5 text-xs text-green-500 hover:text-green-400 transition-colors mt-3">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
+          </svg>
+          Open in Spotify
+        </a>
+      {% endif %}
+
+      <!-- Action buttons -->
+      <div class="mt-4 flex flex-wrap items-center gap-3">
+        <button
+          id="sync-playlist-btn"
+          onclick="startPlaylistSync()"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors
+                 {% if playlist.is_stale %}bg-amber-500 hover:bg-amber-400 text-white{% else %}bg-gray-700 hover:bg-gray-600 text-gray-200{% endif %}">
+          {% if playlist.is_stale %}
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+            </svg>
+            Sync Playlist (out of date)
+          {% else %}
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/>
+            </svg>
+            Sync Playlist
+          {% endif %}
+        </button>
+
+        <button
+          id="sync-af-btn"
+          onclick="startEnrichSync('af')"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors bg-gray-700 hover:bg-gray-600 text-gray-200">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-indigo-400" viewBox="0 0 20 20" fill="currentColor">
+            <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zm6-4a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zm6-3a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z"/>
+          </svg>
+          Sync Audio Features
+        </button>
+
+        <button
+          id="sync-lyrics-btn"
+          onclick="startEnrichSync('lyrics')"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors bg-gray-700 hover:bg-gray-600 text-gray-200">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-sky-400" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clip-rule="evenodd"/>
+          </svg>
+          Sync Lyrics
+        </button>
+
+        <span id="sync-playlist-status" class="text-xs text-gray-500"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tracks table -->
+  {% if playlist_tracks %}
+  <div class="rounded-xl border border-gray-800 overflow-hidden">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="border-b border-gray-800 text-xs font-semibold uppercase tracking-wider text-gray-500">
+          <th class="px-4 py-3 text-right w-10">#</th>
+          <th class="px-4 py-3 text-left">Title</th>
+          <th class="px-4 py-3 text-left hidden md:table-cell">Album</th>
+          <th class="px-4 py-3 text-left hidden lg:table-cell">Added</th>
+          <th class="px-4 py-3 text-right">Duration</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-800/60">
+        {% for pt in playlist_tracks %}
+        {% with in_library=pt.spotify_track_id|in_set:saved_ids %}
+        <tr class="hover:bg-gray-800/50 transition-colors group
+                   {% if pt.track %}cursor-pointer{% endif %}"
+          {% if pt.track %}
+            hx-get="{% url 'track_detail' pt.spotify_track_id %}"
+            hx-target="#track-modal-content"
+            hx-swap="innerHTML"
+          {% endif %}>
+          <td class="px-4 py-3 text-right text-gray-500 tabular-nums">{{ pt.position|add:1 }}</td>
+          <td class="px-4 py-3">
+            <div class="flex items-start gap-2">
+              {% if in_library %}
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-green-500" viewBox="0 0 24 24" fill="currentColor" title="In your library">
+                  <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.27 2 8.5 2 5.41 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.08C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.41 22 8.5c0 3.77-3.4 6.86-8.55 11.53L12 21.35z"/>
+                </svg>
+              {% else %}
+                <span class="w-3.5 flex-shrink-0"></span>
+              {% endif %}
+              <div class="min-w-0">
+                {% if pt.track %}
+                  <div class="flex items-center gap-1 min-w-0 max-w-xs">
+                    <p class="font-medium {% if in_library %}text-white{% else %}text-gray-300{% endif %} truncate flex-1">{{ pt.track.name }}</p>
+                    {% if pt.spotify_track_id|in_set:af_ids %}
+                      <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-indigo-400 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor" title="Audio features available">
+                        <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zm6-4a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zm6-3a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z"/>
+                      </svg>
+                    {% endif %}
+                    {% if pt.spotify_track_id|in_set:lyrics_ids %}
+                      <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-sky-400 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor" title="Lyrics available">
+                        <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clip-rule="evenodd"/>
+                      </svg>
+                    {% endif %}
+                  </div>
+                  <p class="text-gray-400 text-xs mt-0.5 truncate max-w-xs">
+                    {% for artist in pt.track.artists.all %}
+                      {{ artist.name }}{% if not forloop.last %}, {% endif %}
+                    {% endfor %}
+                  </p>
+                {% else %}
+                  <p class="text-gray-500 italic truncate max-w-xs">{{ pt.spotify_track_id }}</p>
+                  <p class="text-gray-600 text-xs">Not yet synced</p>
+                {% endif %}
+              </div>
+            </div>
+          </td>
+          <td class="px-4 py-3 hidden md:table-cell text-gray-400 truncate max-w-[200px]">
+            {% if pt.track %}{{ pt.track.album.name }}{% else %}—{% endif %}
+          </td>
+          <td class="px-4 py-3 hidden lg:table-cell text-gray-500 tabular-nums whitespace-nowrap">
+            {% if pt.added_at %}{{ pt.added_at|date:"Y-m-d" }}{% else %}—{% endif %}
+          </td>
+          <td class="px-4 py-3 text-right text-gray-400 tabular-nums whitespace-nowrap">
+            {% if pt.track %}{{ pt.track.duration_ms|duration_ms }}{% else %}—{% endif %}
+          </td>
+        </tr>
+        {% endwith %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="text-center py-16 text-gray-500">
+    <p>No tracks in this playlist.</p>
+  </div>
+  {% endif %}
+
+</div>
+
+<!-- Track detail modal -->
+<div
+  id="track-modal"
+  class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 bg-black/70"
+  onclick="if(event.target===this)closeModal()"
+>
+  <div id="track-modal-content" class="bg-gray-900 border border-gray-800 rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
+    <!-- populated via HTMX -->
+  </div>
+</div>
+
+<script>
+  function openModal() {
+    document.getElementById('track-modal').classList.remove('hidden');
+  }
+  function closeModal() {
+    document.getElementById('track-modal').classList.add('hidden');
+  }
+  document.body.addEventListener('htmx:afterSwap', function(e) {
+    if (e.detail.target && e.detail.target.id === 'track-modal-content') {
+      openModal();
+    }
+  });
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeModal();
+  });
+
+  // Per-playlist sync
+  (function() {
+    var _pollTimer = null;
+
+    function setStatus(msg, cls) {
+      var el = document.getElementById('sync-playlist-status');
+      if (el) { el.textContent = msg; el.className = 'text-xs ' + (cls || 'text-gray-400'); }
+    }
+
+    function setButtonDisabled(disabled) {
+      var btn = document.getElementById('sync-playlist-btn');
+      if (!btn) return;
+      btn.disabled = disabled;
+      btn.style.opacity = disabled ? '0.5' : '';
+      btn.style.cursor = disabled ? 'not-allowed' : '';
+    }
+
+    function pollStatus(statusUrl) {
+      fetch(statusUrl)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (data.status === 'running') {
+            setStatus('Syncing…', 'text-gray-400');
+            _pollTimer = setTimeout(function() { pollStatus(statusUrl); }, 2000);
+          } else if (data.status === 'complete') {
+            var s = data.stats || {};
+            setStatus(
+              '+' + (s.added || 0) + ' added, -' + (s.removed || 0) + ' removed',
+              'text-green-400'
+            );
+            setButtonDisabled(false);
+            // Reload the page so the updated track list and stale state are shown.
+            setTimeout(function() { window.location.reload(); }, 1200);
+          } else {
+            setStatus('Sync failed', 'text-red-400');
+            setButtonDisabled(false);
+          }
+        })
+        .catch(function() {
+          setStatus('Sync failed', 'text-red-400');
+          setButtonDisabled(false);
+        });
+    }
+
+    window.startPlaylistSync = function() {
+      if (_pollTimer) clearTimeout(_pollTimer);
+      setButtonDisabled(true);
+      setStatus('Starting…', 'text-gray-400');
+
+      fetch('{% url "sync_single_playlist" playlist.id %}', { method: 'POST', headers: {'X-CSRFToken': '{{ csrf_token }}'} })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (!data.job_id) { setStatus('Failed to start', 'text-red-400'); setButtonDisabled(false); return; }
+          var statusUrl = '{% url "sync_single_playlist_status" playlist.id "PLACEHOLDER" %}'.replace('PLACEHOLDER', data.job_id);
+          pollStatus(statusUrl);
+        })
+        .catch(function() {
+          setStatus('Failed to start', 'text-red-400');
+          setButtonDisabled(false);
+        });
+    };
+  })();
+
+  // Per-playlist audio features / lyrics enrichment
+  (function() {
+    var _enrichTimers = {};
+    var ENRICH_CONFIG = {
+      'af': {
+        btnId: 'sync-af-btn',
+        startUrl: '{% url "sync_playlist_audio_features" playlist.id %}',
+        statusBase: '{% url "sync_playlist_audio_features_status" playlist.id "PLACEHOLDER" %}',
+        runningMsg: function(p) {
+          if (p && p.total > 0) return 'Fetching audio features… ' + p.done + '/' + p.total;
+          return 'Fetching audio features…';
+        },
+        doneMsg: function(s) { return (s.saved || 0) + ' saved, ' + (s.not_found || 0) + ' not found'; },
+        errMsg: 'Audio features sync failed',
+      },
+      'lyrics': {
+        btnId: 'sync-lyrics-btn',
+        startUrl: '{% url "sync_playlist_lyrics" playlist.id %}',
+        statusBase: '{% url "sync_playlist_lyrics_status" playlist.id "PLACEHOLDER" %}',
+        runningMsg: function(p) {
+          if (p && p.total > 0) return 'Fetching lyrics… ' + p.done + '/' + p.total;
+          return 'Fetching lyrics…';
+        },
+        doneMsg: function(s) { return (s.saved || 0) + ' saved, ' + (s.not_found || 0) + ' not found'; },
+        errMsg: 'Lyrics sync failed',
+      },
+    };
+
+    function setStatus(msg, cls) {
+      var el = document.getElementById('sync-playlist-status');
+      if (el) { el.textContent = msg; el.className = 'text-xs ' + (cls || 'text-gray-400'); }
+    }
+
+    function setBtn(btnId, disabled) {
+      var btn = document.getElementById(btnId);
+      if (!btn) return;
+      btn.disabled = disabled;
+      btn.style.opacity = disabled ? '0.5' : '';
+      btn.style.cursor = disabled ? 'not-allowed' : '';
+    }
+
+    function pollEnrich(type, statusUrl) {
+      var cfg = ENRICH_CONFIG[type];
+      fetch(statusUrl)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (data.status === 'running') {
+            setStatus(cfg.runningMsg(data.progress), 'text-gray-400');
+            _enrichTimers[type] = setTimeout(function() { pollEnrich(type, statusUrl); }, 2000);
+          } else if (data.status === 'complete') {
+            setStatus(cfg.doneMsg(data.stats || {}), 'text-green-400');
+            setBtn(cfg.btnId, false);
+            setTimeout(function() { window.location.reload(); }, 1200);
+          } else {
+            setStatus(cfg.errMsg, 'text-red-400');
+            setBtn(cfg.btnId, false);
+          }
+        })
+        .catch(function() {
+          setStatus(cfg.errMsg, 'text-red-400');
+          setBtn(cfg.btnId, false);
+        });
+    }
+
+    window.startEnrichSync = function(type) {
+      var cfg = ENRICH_CONFIG[type];
+      if (!cfg) return;
+      if (_enrichTimers[type]) clearTimeout(_enrichTimers[type]);
+      setBtn(cfg.btnId, true);
+      setStatus('Starting…', 'text-gray-400');
+
+      fetch(cfg.startUrl, { method: 'POST', headers: {'X-CSRFToken': '{{ csrf_token }}'} })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (!data.job_id) { setStatus('Failed to start', 'text-red-400'); setBtn(cfg.btnId, false); return; }
+          var statusUrl = cfg.statusBase.replace('PLACEHOLDER', data.job_id);
+          pollEnrich(type, statusUrl);
+        })
+        .catch(function() {
+          setStatus('Failed to start', 'text-red-400');
+          setBtn(cfg.btnId, false);
+        });
+    };
+  })();
+</script>
+{% endblock %}

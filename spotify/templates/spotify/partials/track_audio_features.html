@@ -1,0 +1,98 @@
+{% load spotify_extras %}
+
+{% if af %}
+<div class="space-y-2.5">
+  {% comment %}0-1 range features with progress bars{% endcomment %}
+  <div class="flex items-center gap-3">
+    <span class="w-32 text-xs text-gray-500 flex-shrink-0">Energy</span>
+    <div class="flex-1 bg-gray-700 rounded-full h-1.5">
+      <div class="bg-green-500 h-1.5 rounded-full" style="width: {{ af.energy|to_pct }}%"></div>
+    </div>
+    <span class="w-10 text-right text-xs text-gray-300 tabular-nums">{{ af.energy|floatformat:2 }}</span>
+  </div>
+  <div class="flex items-center gap-3">
+    <span class="w-32 text-xs text-gray-500 flex-shrink-0">Danceability</span>
+    <div class="flex-1 bg-gray-700 rounded-full h-1.5">
+      <div class="bg-green-500 h-1.5 rounded-full" style="width: {{ af.danceability|to_pct }}%"></div>
+    </div>
+    <span class="w-10 text-right text-xs text-gray-300 tabular-nums">{{ af.danceability|floatformat:2 }}</span>
+  </div>
+  <div class="flex items-center gap-3">
+    <span class="w-32 text-xs text-gray-500 flex-shrink-0">Valence</span>
+    <div class="flex-1 bg-gray-700 rounded-full h-1.5">
+      <div class="bg-purple-500 h-1.5 rounded-full" style="width: {{ af.valence|to_pct }}%"></div>
+    </div>
+    <span class="w-10 text-right text-xs text-gray-300 tabular-nums">{{ af.valence|floatformat:2 }}</span>
+  </div>
+  <div class="flex items-center gap-3">
+    <span class="w-32 text-xs text-gray-500 flex-shrink-0">Acousticness</span>
+    <div class="flex-1 bg-gray-700 rounded-full h-1.5">
+      <div class="bg-yellow-500 h-1.5 rounded-full" style="width: {{ af.acousticness|to_pct }}%"></div>
+    </div>
+    <span class="w-10 text-right text-xs text-gray-300 tabular-nums">{{ af.acousticness|floatformat:2 }}</span>
+  </div>
+  <div class="flex items-center gap-3">
+    <span class="w-32 text-xs text-gray-500 flex-shrink-0">Instrumentalness</span>
+    <div class="flex-1 bg-gray-700 rounded-full h-1.5">
+      <div class="bg-blue-500 h-1.5 rounded-full" style="width: {{ af.instrumentalness|to_pct }}%"></div>
+    </div>
+    <span class="w-10 text-right text-xs text-gray-300 tabular-nums">{{ af.instrumentalness|floatformat:2 }}</span>
+  </div>
+  <div class="flex items-center gap-3">
+    <span class="w-32 text-xs text-gray-500 flex-shrink-0">Liveness</span>
+    <div class="flex-1 bg-gray-700 rounded-full h-1.5">
+      <div class="bg-orange-500 h-1.5 rounded-full" style="width: {{ af.liveness|to_pct }}%"></div>
+    </div>
+    <span class="w-10 text-right text-xs text-gray-300 tabular-nums">{{ af.liveness|floatformat:2 }}</span>
+  </div>
+  <div class="flex items-center gap-3">
+    <span class="w-32 text-xs text-gray-500 flex-shrink-0">Speechiness</span>
+    <div class="flex-1 bg-gray-700 rounded-full h-1.5">
+      <div class="bg-pink-500 h-1.5 rounded-full" style="width: {{ af.speechiness|to_pct }}%"></div>
+    </div>
+    <span class="w-10 text-right text-xs text-gray-300 tabular-nums">{{ af.speechiness|floatformat:2 }}</span>
+  </div>
+
+  {% comment %}Numeric / categorical features{% endcomment %}
+  <div class="grid grid-cols-2 gap-x-6 gap-y-2 pt-3 border-t border-gray-800 mt-1">
+    <div class="flex justify-between text-xs">
+      <span class="text-gray-500">Tempo</span>
+      <span class="text-gray-200 tabular-nums">{{ af.tempo|floatformat:1 }} BPM</span>
+    </div>
+    <div class="flex justify-between text-xs">
+      <span class="text-gray-500">Loudness</span>
+      <span class="text-gray-200 tabular-nums">{{ af.loudness|floatformat:1 }} dB</span>
+    </div>
+    <div class="flex justify-between text-xs">
+      <span class="text-gray-500">Key</span>
+      <span class="text-gray-200">{{ af.key|key_name }} {% if af.mode == 1 %}major{% else %}minor{% endif %}</span>
+    </div>
+    <div class="flex justify-between text-xs">
+      <span class="text-gray-500">Time Signature</span>
+      <span class="text-gray-200 tabular-nums">{{ af.time_signature }}/4</span>
+    </div>
+  </div>
+</div>
+
+{% elif error %}
+<div class="rounded-lg bg-red-900/30 border border-red-800 px-4 py-3 text-sm text-red-300">
+  {{ error }}
+</div>
+
+{% else %}
+<button
+  hx-post="{% url 'fetch_track_audio_features' track.id %}"
+  hx-target="#track-modal-audio-features"
+  hx-swap="innerHTML"
+  hx-indicator="#fetch-af-spinner"
+  hx-on:htmx:before-request="this.disabled=true; document.getElementById('fetch-af-label').textContent='Fetching…'"
+  class="inline-flex items-center gap-2 bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded font-medium text-sm transition-colors"
+>
+  <span id="fetch-af-label">Fetch Audio Features</span>
+  <svg id="fetch-af-spinner" class="htmx-indicator w-4 h-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+  </svg>
+</button>
+<p class="mt-2 text-xs text-gray-500">Uses ReccoBeats API; falls back to Deezer preview analysis.</p>
+{% endif %}

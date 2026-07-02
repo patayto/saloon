@@ -1,0 +1,260 @@
+{% load spotify_extras %}
+<div class="space-y-4" data-overview-url="{% url 'analysis:overview' %}">
+
+  <!-- Controls bar -->
+  <div class="flex flex-wrap items-center gap-x-6 gap-y-3">
+
+    <!-- Granularity pills -->
+    <div class="flex items-center gap-2">
+      <span class="text-sm text-gray-400">Granularity:</span>
+      <div class="flex gap-1">
+        {% for g in granularities %}
+        <button
+          onclick="setAnalysisGranularity('{{ g }}')"
+          class="px-3 py-1 rounded text-sm font-medium transition-colors {% if g == granularity %}bg-green-600 text-white{% else %}bg-gray-800 text-gray-400 hover:text-gray-200{% endif %}"
+        >{{ g|capfirst }}</button>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Date range -->
+    <div class="flex items-center gap-2">
+      <span class="text-sm text-gray-400">From:</span>
+      <input
+        id="an-from"
+        type="date"
+        value="{{ date_from }}"
+        min="{{ min_period }}"
+        max="{{ max_period }}"
+        onchange="refreshAnalysis()"
+        class="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm text-gray-200 focus:outline-none focus:border-green-500"
+      >
+      <span class="text-sm text-gray-400">To:</span>
+      <input
+        id="an-to"
+        type="date"
+        value="{{ date_to }}"
+        min="{{ min_period }}"
+        max="{{ max_period }}"
+        onchange="refreshAnalysis()"
+        class="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm text-gray-200 focus:outline-none focus:border-green-500"
+      >
+      {% if date_from or date_to %}
+      <button
+        onclick="resetAnalysisDates()"
+        class="text-xs text-gray-500 hover:text-gray-300 transition-colors px-1"
+        title="Clear date range"
+      >✕ Reset</button>
+      {% endif %}
+    </div>
+
+    <!-- Hidden state fields -->
+    <input type="hidden" id="an-gran" value="{{ granularity }}">
+
+    <!-- Track count -->
+    <span class="text-xs text-gray-500 ml-auto">{{ track_count }} track{{ track_count|pluralize }} with audio features</span>
+
+  </div>
+
+  {% if timeline %}
+  <!-- Mood timeline chart -->
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+    <div class="flex items-start justify-between mb-4">
+      <h2 class="text-sm font-semibold text-gray-300">Mood Timeline — Valence &amp; Energy</h2>
+      <!-- Season legend -->
+      <div class="flex items-center gap-3 text-xs text-gray-500">
+        <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm" style="background:rgba(134,239,172,0.35)"></span>Spring</span>
+        <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm" style="background:rgba(253,224,71,0.35)"></span>Summer</span>
+        <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm" style="background:rgba(251,146,60,0.35)"></span>Autumn</span>
+        <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm" style="background:rgba(147,197,253,0.35)"></span>Winter</span>
+      </div>
+    </div>
+    <div class="relative" style="height:320px">
+      <canvas id="mood-timeline-chart"></canvas>
+    </div>
+  </div>
+  {% else %}
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-8 text-center text-gray-500 text-sm">
+    No data for the selected range. Try widening the date range or running
+    <strong class="text-gray-300">Sync Audio Features</strong> first.
+  </div>
+  {% endif %}
+
+</div>
+
+<script>
+(function() {
+
+  // ── Season background plugin ─────────────────────────────────────────────
+
+  var SEASON_COLORS = {
+    spring: 'rgba(134,239,172,0.09)',
+    summer: 'rgba(253,224,71,0.07)',
+    autumn: 'rgba(251,146,60,0.08)',
+    winter: 'rgba(147,197,253,0.08)',
+  };
+
+  function getSeason(dateStr) {
+    var m = parseInt(dateStr.substring(5, 7), 10);
+    if (m >= 3 && m <= 5) return 'spring';
+    if (m >= 6 && m <= 8) return 'summer';
+    if (m >= 9 && m <= 11) return 'autumn';
+    return 'winter';
+  }
+
+  var seasonPlugin = {
+    id: 'seasonBackground',
+    beforeDraw: function(chart) {
+      var labels = chart.data.labels;
+      if (!labels || labels.length < 2) return;
+
+      var ctx   = chart.ctx;
+      var xAxis = chart.scales.x;
+      var yAxis = chart.scales.y;
+      var top    = yAxis.top;
+      var bottom = yAxis.bottom;
+
+      // Half the distance between two adjacent ticks — defines the "cell" width
+      var halfStep = (xAxis.getPixelForValue(1) - xAxis.getPixelForValue(0)) / 2;
+
+      // Collect consecutive runs of the same season
+      var runs = [];
+      var cur  = null;
+      labels.forEach(function(label, i) {
+        var season = getSeason(label);
+        if (!cur || cur.season !== season) {
+          if (cur) runs.push(cur);
+          cur = { season: season, start: i, end: i };
+        } else {
+          cur.end = i;
+        }
+      });
+      if (cur) runs.push(cur);
+
+      ctx.save();
+      runs.forEach(function(run) {
+        var x1 = xAxis.getPixelForValue(run.start) - halfStep;
+        var x2 = xAxis.getPixelForValue(run.end)   + halfStep;
+        x1 = Math.max(x1, xAxis.left);
+        x2 = Math.min(x2, xAxis.right);
+        ctx.fillStyle = SEASON_COLORS[run.season];
+        ctx.fillRect(x1, top, x2 - x1, bottom - top);
+      });
+      ctx.restore();
+    },
+  };
+
+  // ── Chart ────────────────────────────────────────────────────────────────
+
+  var canvas = document.getElementById('mood-timeline-chart');
+  if (!canvas) return;
+
+  if (canvas._chartInstance) canvas._chartInstance.destroy();
+
+  var labels  = {{ labels_json|safe }};
+  var valence = {{ valence_json|safe }};
+  var energy  = {{ energy_json|safe }};
+
+  canvas._chartInstance = new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    plugins: [seasonPlugin],
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'Valence',
+          data: valence,
+          borderColor: '#22c55e',
+          backgroundColor: 'rgba(34,197,94,0.08)',
+          borderWidth: 2,
+          pointRadius: labels.length > 60 ? 1 : 3,
+          pointHoverRadius: 5,
+          tension: 0.3,
+          fill: true,
+          yAxisID: 'y',
+        },
+        {
+          label: 'Energy',
+          data: energy,
+          borderColor: '#f59e0b',
+          backgroundColor: 'rgba(245,158,11,0.06)',
+          borderWidth: 2,
+          pointRadius: labels.length > 60 ? 1 : 3,
+          pointHoverRadius: 5,
+          tension: 0.3,
+          fill: true,
+          yAxisID: 'y',
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          labels: { color: '#9ca3af', font: { size: 12 } },
+        },
+        tooltip: {
+          callbacks: {
+            title: function(items) {
+              var label = items[0].label;
+              var season = getSeason(label);
+              var icon = { spring: '🌸', summer: '☀️', autumn: '🍂', winter: '❄️' }[season] || '';
+              return label + '  ' + icon;
+            },
+            label: function(ctx) {
+              return ctx.dataset.label + ': ' + (ctx.parsed.y !== null ? ctx.parsed.y.toFixed(3) : 'n/a');
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          ticks: { color: '#6b7280', maxRotation: 45, autoSkip: true, maxTicksLimit: 24, font: { size: 11 } },
+          grid:  { color: 'rgba(255,255,255,0.05)' },
+        },
+        y: {
+          min: 0,
+          max: 1,
+          ticks: { color: '#6b7280', font: { size: 11 } },
+          grid:  { color: 'rgba(255,255,255,0.05)' },
+          title: { display: true, text: 'Score (0–1)', color: '#6b7280', font: { size: 11 } },
+        },
+      },
+    },
+  });
+
+  // ── Controls ─────────────────────────────────────────────────────────────
+
+  var overviewUrl = document.querySelector('[data-overview-url]').dataset.overviewUrl;
+
+  window.refreshAnalysis = function() {
+    var gran = document.getElementById('an-gran').value;
+    var from = document.getElementById('an-from') ? document.getElementById('an-from').value : '';
+    var to   = document.getElementById('an-to')   ? document.getElementById('an-to').value   : '';
+    var params = { granularity: gran };
+    if (from) params.date_from = from;
+    if (to)   params.date_to   = to;
+    htmx.ajax('GET', overviewUrl + '?' + new URLSearchParams(params).toString(), {
+      target: '#analysis-overview',
+      swap: 'innerHTML',
+    });
+  };
+
+  window.setAnalysisGranularity = function(g) {
+    document.getElementById('an-gran').value = g;
+    refreshAnalysis();
+  };
+
+  window.resetAnalysisDates = function() {
+    // date inputs may not exist if no data — guard
+    var f = document.getElementById('an-from');
+    var t = document.getElementById('an-to');
+    if (f) f.value = '';
+    if (t) t.value = '';
+    refreshAnalysis();
+  };
+
+})();
+</script>

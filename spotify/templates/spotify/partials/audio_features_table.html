@@ -1,0 +1,290 @@
+{% comment %}
+Syncs the hidden sort/dir fields when this partial is swapped in by HTMX.
+{% endcomment %}
+<script>
+  (function() {
+    var s = document.getElementById('af-sort-field');
+    var d = document.getElementById('af-dir-field');
+    if (s) s.value = '{{ af_sort }}';
+    if (d) d.value = '{{ af_dir }}';
+  })();
+</script>
+
+{% with base_url="audio_features_table" %}
+<div class="rounded-lg border border-gray-800 overflow-x-auto">
+  <table class="w-full text-sm whitespace-nowrap">
+    <thead class="bg-gray-900 text-gray-400 text-xs uppercase tracking-wider">
+      <tr>
+
+        <!-- Title -->
+        <th class="px-4 py-3 text-left font-medium">
+          <a
+            hx-get="{% url 'audio_features_table' %}?sort=title&dir={{ af_sort_dirs.title }}&q={{ af_q|urlencode }}&page=1"
+            hx-target="#audio-features-table"
+            hx-push-url="true"
+            class="inline-flex items-center gap-1 hover:text-white cursor-pointer select-none"
+          >
+            Title
+            {% if af_sort == "title" %}{% if af_dir == "asc" %}↑{% else %}↓{% endif %}
+            {% else %}<span class="opacity-30">↕</span>{% endif %}
+          </a>
+        </th>
+
+        <!-- Artist (filterable, not sortable) -->
+        <th class="px-4 py-3 text-left font-medium">Artist</th>
+
+        <!-- Tempo -->
+        <th class="px-4 py-3 text-right font-medium">
+          <a
+            hx-get="{% url 'audio_features_table' %}?sort=tempo&dir={{ af_sort_dirs.tempo }}&q={{ af_q|urlencode }}&page=1"
+            hx-target="#audio-features-table"
+            hx-push-url="true"
+            class="inline-flex items-center gap-1 justify-end hover:text-white cursor-pointer select-none"
+          >
+            {% if af_sort == "tempo" %}{% if af_dir == "asc" %}↑{% else %}↓{% endif %}
+            {% else %}<span class="opacity-30">↕</span>{% endif %}
+            Tempo
+          </a>
+        </th>
+
+        <!-- Energy -->
+        <th class="px-4 py-3 text-right font-medium">
+          <a
+            hx-get="{% url 'audio_features_table' %}?sort=energy&dir={{ af_sort_dirs.energy }}&q={{ af_q|urlencode }}&page=1"
+            hx-target="#audio-features-table"
+            hx-push-url="true"
+            class="inline-flex items-center gap-1 justify-end hover:text-white cursor-pointer select-none"
+          >
+            {% if af_sort == "energy" %}{% if af_dir == "asc" %}↑{% else %}↓{% endif %}
+            {% else %}<span class="opacity-30">↕</span>{% endif %}
+            Energy
+          </a>
+        </th>
+
+        <!-- Danceability -->
+        <th class="px-4 py-3 text-right font-medium">
+          <a
+            hx-get="{% url 'audio_features_table' %}?sort=danceability&dir={{ af_sort_dirs.danceability }}&q={{ af_q|urlencode }}&page=1"
+            hx-target="#audio-features-table"
+            hx-push-url="true"
+            class="inline-flex items-center gap-1 justify-end hover:text-white cursor-pointer select-none"
+          >
+            {% if af_sort == "danceability" %}{% if af_dir == "asc" %}↑{% else %}↓{% endif %}
+            {% else %}<span class="opacity-30">↕</span>{% endif %}
+            Dance
+          </a>
+        </th>
+
+        <!-- Valence -->
+        <th class="px-4 py-3 text-right font-medium">
+          <a
+            hx-get="{% url 'audio_features_table' %}?sort=valence&dir={{ af_sort_dirs.valence }}&q={{ af_q|urlencode }}&page=1"
+            hx-target="#audio-features-table"
+            hx-push-url="true"
+            class="inline-flex items-center gap-1 justify-end hover:text-white cursor-pointer select-none"
+          >
+            {% if af_sort == "valence" %}{% if af_dir == "asc" %}↑{% else %}↓{% endif %}
+            {% else %}<span class="opacity-30">↕</span>{% endif %}
+            Valence
+          </a>
+        </th>
+
+        <!-- Acousticness -->
+        <th class="px-4 py-3 text-right font-medium">
+          <a
+            hx-get="{% url 'audio_features_table' %}?sort=acousticness&dir={{ af_sort_dirs.acousticness }}&q={{ af_q|urlencode }}&page=1"
+            hx-target="#audio-features-table"
+            hx-push-url="true"
+            class="inline-flex items-center gap-1 justify-end hover:text-white cursor-pointer select-none"
+          >
+            {% if af_sort == "acousticness" %}{% if af_dir == "asc" %}↑{% else %}↓{% endif %}
+            {% else %}<span class="opacity-30">↕</span>{% endif %}
+            Acoustic
+          </a>
+        </th>
+
+        <!-- Instrumentalness -->
+        <th class="px-4 py-3 text-right font-medium">
+          <a
+            hx-get="{% url 'audio_features_table' %}?sort=instrumentalness&dir={{ af_sort_dirs.instrumentalness }}&q={{ af_q|urlencode }}&page=1"
+            hx-target="#audio-features-table"
+            hx-push-url="true"
+            class="inline-flex items-center gap-1 justify-end hover:text-white cursor-pointer select-none"
+          >
+            {% if af_sort == "instrumentalness" %}{% if af_dir == "asc" %}↑{% else %}↓{% endif %}
+            {% else %}<span class="opacity-30">↕</span>{% endif %}
+            Instr
+          </a>
+        </th>
+
+        <!-- Liveness -->
+        <th class="px-4 py-3 text-right font-medium">
+          <a
+            hx-get="{% url 'audio_features_table' %}?sort=liveness&dir={{ af_sort_dirs.liveness }}&q={{ af_q|urlencode }}&page=1"
+            hx-target="#audio-features-table"
+            hx-push-url="true"
+            class="inline-flex items-center gap-1 justify-end hover:text-white cursor-pointer select-none"
+          >
+            {% if af_sort == "liveness" %}{% if af_dir == "asc" %}↑{% else %}↓{% endif %}
+            {% else %}<span class="opacity-30">↕</span>{% endif %}
+            Live
+          </a>
+        </th>
+
+        <!-- Speechiness -->
+        <th class="px-4 py-3 text-right font-medium">
+          <a
+            hx-get="{% url 'audio_features_table' %}?sort=speechiness&dir={{ af_sort_dirs.speechiness }}&q={{ af_q|urlencode }}&page=1"
+            hx-target="#audio-features-table"
+            hx-push-url="true"
+            class="inline-flex items-center gap-1 justify-end hover:text-white cursor-pointer select-none"
+          >
+            {% if af_sort == "speechiness" %}{% if af_dir == "asc" %}↑{% else %}↓{% endif %}
+            {% else %}<span class="opacity-30">↕</span>{% endif %}
+            Speech
+          </a>
+        </th>
+
+        <!-- Loudness -->
+        <th class="px-4 py-3 text-right font-medium">
+          <a
+            hx-get="{% url 'audio_features_table' %}?sort=loudness&dir={{ af_sort_dirs.loudness }}&q={{ af_q|urlencode }}&page=1"
+            hx-target="#audio-features-table"
+            hx-push-url="true"
+            class="inline-flex items-center gap-1 justify-end hover:text-white cursor-pointer select-none"
+          >
+            {% if af_sort == "loudness" %}{% if af_dir == "asc" %}↑{% else %}↓{% endif %}
+            {% else %}<span class="opacity-30">↕</span>{% endif %}
+            Loud (dB)
+          </a>
+        </th>
+
+        <!-- Key -->
+        <th class="px-4 py-3 text-right font-medium">
+          <a
+            hx-get="{% url 'audio_features_table' %}?sort=key&dir={{ af_sort_dirs.key }}&q={{ af_q|urlencode }}&page=1"
+            hx-target="#audio-features-table"
+            hx-push-url="true"
+            class="inline-flex items-center gap-1 justify-end hover:text-white cursor-pointer select-none"
+          >
+            {% if af_sort == "key" %}{% if af_dir == "asc" %}↑{% else %}↓{% endif %}
+            {% else %}<span class="opacity-30">↕</span>{% endif %}
+            Key
+          </a>
+        </th>
+
+        <!-- Mode -->
+        <th class="px-4 py-3 text-right font-medium">
+          <a
+            hx-get="{% url 'audio_features_table' %}?sort=mode&dir={{ af_sort_dirs.mode }}&q={{ af_q|urlencode }}&page=1"
+            hx-target="#audio-features-table"
+            hx-push-url="true"
+            class="inline-flex items-center gap-1 justify-end hover:text-white cursor-pointer select-none"
+          >
+            {% if af_sort == "mode" %}{% if af_dir == "asc" %}↑{% else %}↓{% endif %}
+            {% else %}<span class="opacity-30">↕</span>{% endif %}
+            Mode
+          </a>
+        </th>
+
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-gray-800">
+      {% for af in af_page %}
+      <tr
+        class="hover:bg-gray-800/50 transition-colors cursor-pointer"
+        hx-get="{% url 'track_detail' af.track.id %}"
+        hx-target="#track-modal-content"
+        hx-swap="innerHTML"
+      >
+
+        <!-- Title -->
+        <td class="px-4 py-3 font-medium max-w-xs truncate">
+          {{ af.track.name }}
+        </td>
+
+        <!-- Artists -->
+        <td class="px-4 py-3 text-gray-300 max-w-xs truncate">
+          {% for artist in af.track.artists.all %}{{ artist.name }}{% if not forloop.last %}, {% endif %}{% endfor %}
+        </td>
+
+        <!-- Tempo -->
+        <td class="px-4 py-3 text-gray-300 text-right tabular-nums">{{ af.tempo|floatformat:1 }}</td>
+
+        <!-- Energy -->
+        <td class="px-4 py-3 text-gray-300 text-right tabular-nums">{{ af.energy|floatformat:2 }}</td>
+
+        <!-- Danceability -->
+        <td class="px-4 py-3 text-gray-300 text-right tabular-nums">{{ af.danceability|floatformat:2 }}</td>
+
+        <!-- Valence -->
+        <td class="px-4 py-3 text-gray-300 text-right tabular-nums">{{ af.valence|floatformat:2 }}</td>
+
+        <!-- Acousticness -->
+        <td class="px-4 py-3 text-gray-300 text-right tabular-nums">{{ af.acousticness|floatformat:2 }}</td>
+
+        <!-- Instrumentalness -->
+        <td class="px-4 py-3 text-gray-300 text-right tabular-nums">{{ af.instrumentalness|floatformat:2 }}</td>
+
+        <!-- Liveness -->
+        <td class="px-4 py-3 text-gray-300 text-right tabular-nums">{{ af.liveness|floatformat:2 }}</td>
+
+        <!-- Speechiness -->
+        <td class="px-4 py-3 text-gray-300 text-right tabular-nums">{{ af.speechiness|floatformat:2 }}</td>
+
+        <!-- Loudness -->
+        <td class="px-4 py-3 text-gray-300 text-right tabular-nums">{{ af.loudness|floatformat:1 }}</td>
+
+        <!-- Key -->
+        <td class="px-4 py-3 text-gray-300 text-right tabular-nums">{{ af.key }}</td>
+
+        <!-- Mode -->
+        <td class="px-4 py-3 text-gray-300 text-right tabular-nums">
+          {% if af.mode == 1 %}maj{% else %}min{% endif %}
+        </td>
+
+      </tr>
+      {% empty %}
+      <tr>
+        <td colspan="13" class="px-4 py-12 text-center text-gray-500">
+          No audio features found{% if af_q %} matching "<span class="text-gray-300">{{ af_q }}</span>"{% endif %}.
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endwith %}
+
+<!-- Pagination -->
+{% if af_page.paginator.num_pages > 1 %}
+<div class="flex items-center justify-between mt-4 text-sm text-gray-400">
+  <span>
+    Page {{ af_page.number }} of {{ af_page.paginator.num_pages }}
+    &middot; {{ af_total_count }} track{{ af_total_count|pluralize }}
+  </span>
+  <div class="flex gap-2">
+    {% if af_page.has_previous %}
+    <a
+      hx-get="{% url 'audio_features_table' %}?page={{ af_page.previous_page_number }}&sort={{ af_sort }}&dir={{ af_dir }}&q={{ af_q|urlencode }}"
+      hx-target="#audio-features-table"
+      hx-push-url="true"
+      class="px-3 py-1 rounded bg-gray-800 hover:bg-gray-700 cursor-pointer transition-colors"
+    >← Prev</a>
+    {% else %}
+    <span class="px-3 py-1 rounded bg-gray-800 opacity-30 cursor-not-allowed">← Prev</span>
+    {% endif %}
+
+    {% if af_page.has_next %}
+    <a
+      hx-get="{% url 'audio_features_table' %}?page={{ af_page.next_page_number }}&sort={{ af_sort }}&dir={{ af_dir }}&q={{ af_q|urlencode }}"
+      hx-target="#audio-features-table"
+      hx-push-url="true"
+      class="px-3 py-1 rounded bg-gray-800 hover:bg-gray-700 cursor-pointer transition-colors"
+    >Next →</a>
+    {% else %}
+    <span class="px-3 py-1 rounded bg-gray-800 opacity-30 cursor-not-allowed">Next →</span>
+    {% endif %}
+  </div>
+</div>
+{% endif %}

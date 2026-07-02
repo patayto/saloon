@@ -1,0 +1,131 @@
+{% load spotify_extras %}
+<div class="p-6">
+
+  <!-- Header: title + close -->
+  <div class="flex items-start justify-between gap-4 mb-5">
+    <div class="min-w-0">
+      <h2 class="text-xl font-bold text-white leading-tight truncate">{{ track.name }}</h2>
+      <p class="text-sm text-gray-400 mt-1">
+        {% for artist in track.artists.all %}
+          {% if artist.spotify_url %}
+            <a href="{{ artist.spotify_url }}" target="_blank" rel="noopener"
+               class="hover:text-green-400 transition-colors">{{ artist.name }}</a>
+          {% else %}
+            {{ artist.name }}
+          {% endif %}
+          {% if not forloop.last %}, {% endif %}
+        {% endfor %}
+      </p>
+    </div>
+    <button
+      onclick="closeModal()"
+      class="flex-shrink-0 text-gray-500 hover:text-white transition-colors p-1 -mr-1 -mt-1"
+      aria-label="Close"
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
+        <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
+      </svg>
+    </button>
+  </div>
+
+  <!-- Track info card -->
+  <div class="rounded-lg bg-gray-800/50 border border-gray-700 p-4 mb-5 grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+
+    <!-- Album -->
+    <div class="col-span-2">
+      <p class="text-xs text-gray-500 mb-0.5">Album</p>
+      <p class="text-gray-200">
+        {% if track.album.spotify_url %}
+          <a href="{{ track.album.spotify_url }}" target="_blank" rel="noopener"
+             class="hover:text-green-400 transition-colors">{{ track.album.name }}</a>
+        {% else %}
+          {{ track.album.name }}
+        {% endif %}
+        <span class="text-gray-500 text-xs ml-1">{{ track.album.release_date }}</span>
+      </p>
+    </div>
+
+    <!-- Duration -->
+    <div>
+      <p class="text-xs text-gray-500 mb-0.5">Duration</p>
+      <p class="text-gray-200 tabular-nums">{{ track.duration_ms|duration_ms }}</p>
+    </div>
+
+    <!-- Popularity -->
+    <div>
+      <p class="text-xs text-gray-500 mb-0.5">Popularity</p>
+      <div class="flex items-center gap-2">
+        <div class="flex-1 bg-gray-700 rounded-full h-1.5 max-w-[80px]">
+          <div class="bg-green-500 h-1.5 rounded-full" style="width: {{ track.popularity }}%"></div>
+        </div>
+        <span class="text-gray-200 tabular-nums text-xs">{{ track.popularity }}/100</span>
+      </div>
+    </div>
+
+    <!-- Track / Disc -->
+    <div>
+      <p class="text-xs text-gray-500 mb-0.5">Track</p>
+      <p class="text-gray-200 tabular-nums">
+        #{{ track.track_number }}
+        {% if track.disc_number > 1 %}· Disc {{ track.disc_number }}{% endif %}
+      </p>
+    </div>
+
+    <!-- Explicit / Added at -->
+    <div>
+      <p class="text-xs text-gray-500 mb-0.5">Added</p>
+      <p class="text-gray-200">
+        {% if saved %}{{ saved.added_at|date:"Y-m-d" }}{% else %}—{% endif %}
+        {% if track.explicit %}
+          <span class="inline-block ml-2 bg-gray-600 text-gray-200 text-xs font-bold px-1 rounded">E</span>
+        {% endif %}
+      </p>
+    </div>
+
+    <!-- Spotify link -->
+    {% if track.spotify_url %}
+    <div class="col-span-2 pt-1">
+      <a href="{{ track.spotify_url }}" target="_blank" rel="noopener"
+         class="inline-flex items-center gap-1.5 text-xs text-green-500 hover:text-green-400 transition-colors">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
+        </svg>
+        Open in Spotify
+      </a>
+    </div>
+    {% endif %}
+
+  </div>
+
+  <!-- Audio Features section -->
+  <div class="mb-5">
+    <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Audio Features</h3>
+    <div id="track-modal-audio-features">
+      {% include "spotify/partials/track_audio_features.html" with af=af track=track %}
+    </div>
+  </div>
+
+  <!-- Lyrics section -->
+  <div class="mb-5">
+    <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Lyrics</h3>
+    <div id="track-modal-lyrics">
+      {% include "spotify/partials/track_lyrics.html" with lyrics=lyrics track=track %}
+    </div>
+  </div>
+
+  <!-- Mashup Partners section (only when audio features exist) -->
+  {% if af %}
+  <div>
+    <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Mashup Partners</h3>
+    <div
+      id="mashup-candidates-container"
+      hx-get="{% url 'track_mashup_candidates' track.id %}"
+      hx-trigger="load"
+      hx-swap="outerHTML"
+    >
+      <p class="text-xs text-gray-500 animate-pulse">Finding mashup partners…</p>
+    </div>
+  </div>
+  {% endif %}
+
+</div>

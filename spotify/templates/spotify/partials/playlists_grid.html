@@ -1,0 +1,156 @@
+{% comment %}
+Inline script keeps the hidden sort/dir/year fields in sync with the current state
+so subsequent filter keystrokes preserve all active params (same pattern as tracks_table.html).
+{% endcomment %}
+<script>
+  (function() {
+    var s = document.getElementById('pl-sort-field');
+    var d = document.getElementById('pl-dir-field');
+    var y = document.getElementById('pl-year-field');
+    var st = document.getElementById('pl-stale-field');
+    if (s) s.value = '{{ sort }}';
+    if (d) d.value = '{{ dir }}';
+    if (y) y.value = '{{ year }}';
+    if (st) st.value = '{{ stale }}';
+  })();
+</script>
+
+{% if stale_count %}
+<div class="mb-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-sm text-amber-400">
+  <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+    <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+  </svg>
+  {{ stale_count }} playlist{{ stale_count|pluralize }} need{{ stale_count|pluralize:"s," }} syncing — open a playlist and click <strong class="font-semibold">Sync Playlist</strong> to update.
+</div>
+{% endif %}
+
+<!-- Controls row: year filter + sort pills -->
+<div class="flex items-center justify-between mb-4 gap-4 flex-wrap">
+
+  <!-- Left: result count + year select -->
+  <div class="flex items-center gap-3">
+    <p class="text-sm text-gray-400 tabular-nums">
+      {{ total_count }} playlist{{ total_count|pluralize }}
+      {% if q %}&nbsp;matching <span class="text-gray-200">"{{ q }}"</span>{% endif %}
+      {% if year %}&nbsp;from <span class="text-gray-200">{{ year }}</span>{% endif %}
+    </p>
+
+    {% if available_years %}
+    <select
+      id="pl-year-select"
+      name="year"
+      hx-get="{% url 'playlists_grid' %}"
+      hx-trigger="change"
+      hx-target="#playlists-grid"
+      hx-include="#pl-sort-field, #pl-dir-field, #pl-q-input, #pl-stale-field"
+      class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-300 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 cursor-pointer"
+    >
+      <option value="">All years</option>
+      {% for yr in available_years %}
+      <option value="{{ yr }}" {% if year == yr|stringformat:"s" %}selected{% endif %}>{{ yr }}</option>
+      {% endfor %}
+    </select>
+    {% endif %}
+  </div>
+
+  <!-- Right: stale filter + sort pills -->
+  <div class="flex items-center gap-1">
+    <!-- Stale filter pill -->
+    <a hx-get="{% url 'playlists_grid' %}?sort={{ sort }}&dir={{ dir }}&q={{ q|urlencode }}&year={{ year|urlencode }}&stale={% if stale == '1' %}{% else %}1{% endif %}"
+       hx-target="#playlists-grid"
+       class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium transition-colors cursor-pointer select-none mr-2
+              {% if stale == '1' %}bg-amber-500 text-white{% else %}bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200{% endif %}">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" viewBox="0 0 20 20" fill="currentColor">
+        <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+      </svg>
+      Stale only
+    </a>
+    <span class="text-xs text-gray-500 mr-1">Sort:</span>
+
+    <!-- Name -->
+    <a hx-get="{% url 'playlists_grid' %}?sort=name&dir={{ sort_dirs.name }}&q={{ q|urlencode }}&year={{ year|urlencode }}&stale={{ stale }}"
+       hx-target="#playlists-grid"
+       class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium transition-colors cursor-pointer select-none
+              {% if sort == 'name' %}bg-green-600 text-white{% else %}bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200{% endif %}">
+      Name{% if sort == 'name' %} {% if dir == 'asc' %}↑{% else %}↓{% endif %}{% endif %}
+    </a>
+
+    <!-- Tracks -->
+    <a hx-get="{% url 'playlists_grid' %}?sort=tracks&dir={{ sort_dirs.tracks }}&q={{ q|urlencode }}&year={{ year|urlencode }}&stale={{ stale }}"
+       hx-target="#playlists-grid"
+       class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium transition-colors cursor-pointer select-none
+              {% if sort == 'tracks' %}bg-green-600 text-white{% else %}bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200{% endif %}">
+      Tracks{% if sort == 'tracks' %} {% if dir == 'asc' %}↑{% else %}↓{% endif %}{% endif %}
+    </a>
+
+    <!-- Owner -->
+    <a hx-get="{% url 'playlists_grid' %}?sort=owner&dir={{ sort_dirs.owner }}&q={{ q|urlencode }}&year={{ year|urlencode }}&stale={{ stale }}"
+       hx-target="#playlists-grid"
+       class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium transition-colors cursor-pointer select-none
+              {% if sort == 'owner' %}bg-green-600 text-white{% else %}bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200{% endif %}">
+      Owner{% if sort == 'owner' %} {% if dir == 'asc' %}↑{% else %}↓{% endif %}{% endif %}
+    </a>
+
+    <!-- Created -->
+    <a hx-get="{% url 'playlists_grid' %}?sort=created&dir={{ sort_dirs.created }}&q={{ q|urlencode }}&year={{ year|urlencode }}&stale={{ stale }}"
+       hx-target="#playlists-grid"
+       class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium transition-colors cursor-pointer select-none
+              {% if sort == 'created' %}bg-green-600 text-white{% else %}bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200{% endif %}">
+      Created{% if sort == 'created' %} {% if dir == 'asc' %}↑{% else %}↓{% endif %}{% endif %}
+    </a>
+
+  </div>
+</div>
+
+{% if playlists %}
+<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+  {% for playlist in playlists %}
+  {% cycle 'from-violet-600 to-indigo-700' 'from-emerald-600 to-teal-700' 'from-rose-500 to-pink-700' 'from-amber-500 to-orange-600' 'from-sky-500 to-blue-700' 'from-fuchsia-500 to-purple-700' as card_gradient silent %}
+  <a href="{% url 'playlist_detail' playlist.id %}"
+     class="group block rounded-xl overflow-hidden bg-gray-800 hover:bg-gray-700 transition-all duration-200 hover:scale-[1.03] hover:shadow-xl shadow-md">
+    <div class="relative aspect-square overflow-hidden">
+      {% if playlist.image_url %}
+        <img src="{{ playlist.image_url }}" alt="{{ playlist.name }}"
+             class="w-full h-full object-cover transition-all duration-200 group-hover:brightness-110">
+      {% else %}
+        <div class="w-full h-full bg-gradient-to-br {{ card_gradient }} flex items-center justify-center">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-12 h-12 text-white/40" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z"/>
+          </svg>
+        </div>
+      {% endif %}
+      {% if playlist.is_stale %}
+      <span title="Tracks out of date — click to sync"
+            class="absolute top-2 right-2 flex items-center justify-center w-6 h-6 rounded-full bg-amber-500 shadow-lg">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-white" viewBox="0 0 20 20" fill="currentColor">
+          <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+        </svg>
+      </span>
+      {% endif %}
+    </div>
+    <div class="p-3">
+      <p class="font-semibold text-sm leading-tight line-clamp-2 {% if playlist.is_stale %}text-amber-300{% else %}text-white{% endif %}">{{ playlist.name }}</p>
+      <p class="text-xs text-gray-400 mt-1">
+        {{ playlist.total_tracks }} track{{ playlist.total_tracks|pluralize }}
+        {% if playlist.created_at %}
+          · <span class="text-gray-500">{{ playlist.created_at|date:"Y" }}</span>
+        {% endif %}
+      </p>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<div class="text-center py-24 text-gray-500">
+  <svg xmlns="http://www.w3.org/2000/svg" class="w-12 h-12 mx-auto mb-4 text-gray-700" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z"/>
+  </svg>
+  {% if q or year %}
+    <p class="text-lg font-medium text-gray-400">No playlists match{% if q %} "{{ q }}"{% endif %}{% if year %} from {{ year }}{% endif %}</p>
+    <p class="text-sm mt-1">Try a different search term or year.</p>
+  {% else %}
+    <p class="text-lg font-medium text-gray-400">No playlists synced yet</p>
+    <p class="text-sm mt-1">Click "Sync Playlists" to load your Spotify playlists.</p>
+  {% endif %}
+</div>
+{% endif %}

@@ -1,0 +1,855 @@
+{% extends "spotify/base.html" %}
+
+{% block content %}
+<!-- Toast notification container (top-right, Mac-style) -->
+<div id="toast-container" class="fixed top-4 right-4 z-[200] flex flex-col gap-2 items-end pointer-events-none"></div>
+
+<!-- Sync status panel (bottom-right) -->
+<div id="sync-panel" class="fixed right-4 bottom-4 z-[150] w-72 hidden">
+  <div id="sync-panel-header"
+       onclick="toggleSyncPanel()"
+       class="cursor-pointer flex items-center justify-between bg-gray-900 border border-gray-700 rounded-xl px-4 py-2 shadow-2xl select-none">
+    <span class="text-sm font-medium text-gray-200">
+      Syncs <span id="sync-panel-badge" class="ml-1 inline-flex items-center justify-center w-5 h-5 text-xs font-bold rounded-full bg-gray-700 text-gray-300">0</span>
+    </span>
+    <svg id="sync-panel-chevron" xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-gray-400 transition-transform duration-200" viewBox="0 0 20 20" fill="currentColor">
+      <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/>
+    </svg>
+  </div>
+  <div id="sync-panel-body" class="hidden space-y-2 mt-2 max-h-80 overflow-y-auto">
+    <!-- entries injected by JS -->
+  </div>
+</div>
+
+<!-- Sync summary modal -->
+<div
+  id="sync-summary-modal"
+  class="fixed inset-0 z-[150] hidden flex items-center justify-center p-4 bg-black/70"
+  onclick="if(event.target===this)closeSyncSummary()"
+>
+  <div id="sync-summary-content" class="bg-gray-900 border border-gray-800 rounded-xl w-full max-w-lg max-h-[80vh] overflow-y-auto shadow-2xl p-6">
+    <!-- populated by JS -->
+  </div>
+</div>
+
+<!-- Track detail modal overlay -->
+<div
+  id="track-modal"
+  class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 bg-black/70"
+  onclick="if(event.target===this)closeModal()"
+>
+  <div id="track-modal-content" class="bg-gray-900 border border-gray-800 rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
+    <!-- populated via HTMX -->
+  </div>
+</div>
+<div class="max-w-screen-xl mx-auto px-4 py-8">
+
+  <!-- Header -->
+  <div class="flex items-center justify-between mb-4">
+    <div>
+      <h1 class="text-2xl font-bold tracking-tight">Saloon</h1>
+      <p id="subtitle-library" class="text-sm text-gray-400 mt-1">{{ total_count }} saved track{{ total_count|pluralize }}</p>
+      <p id="subtitle-audio-features" class="text-sm text-gray-400 mt-1 hidden">{{ af_total_count }} audio feature{{ af_total_count|pluralize }}</p>
+      <p id="subtitle-playlists" class="text-sm text-gray-400 mt-1 hidden">{{ playlists_count }} playlist{{ playlists_count|pluralize }}</p>
+      <p id="subtitle-analysis" class="text-sm text-gray-400 mt-1 hidden">Mood &amp; genre analytics</p>
+    </div>
+    <div class="flex items-center gap-3">
+
+      <!-- Library-specific actions -->
+      <div id="actions-library" class="flex items-center gap-3">
+        <button
+          id="sync-btn"
+          onclick="startLibrarySync()"
+          class="inline-flex items-center gap-2 bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded font-medium text-sm transition-colors"
+        >
+          <span id="sync-label">Sync Library</span>
+        </button>
+        <button
+          id="sync-lyrics-btn"
+          onclick="startLyricsSync()"
+          class="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded font-medium text-sm transition-colors"
+        >
+          <span id="sync-lyrics-label">Sync Lyrics</span>
+        </button>
+      </div>
+
+      <!-- Audio-features-specific actions (hidden by default) -->
+      <div id="actions-audio-features" class="hidden flex items-center gap-3">
+        <button
+          id="sync-af-btn"
+          onclick="startAudioFeaturesSync()"
+          class="inline-flex items-center gap-2 bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded font-medium text-sm transition-colors"
+        >
+          <span id="sync-af-label">Sync Audio Features</span>
+        </button>
+      </div>
+
+      <!-- Analysis-specific actions (hidden by default; no actions needed) -->
+      <div id="actions-analysis" class="hidden flex items-center gap-3"></div>
+
+      <!-- Playlists-specific actions (hidden by default) -->
+      <div id="actions-playlists" class="hidden flex items-center gap-3">
+        <button
+          id="sync-playlists-btn"
+          onclick="startPlaylistSync()"
+          class="inline-flex items-center gap-2 bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded font-medium text-sm transition-colors"
+        >
+          <span id="sync-playlists-label">Sync Playlists</span>
+        </button>
+      </div>
+
+      <!-- Always visible: login / profile -->
+      {% if spotify_user %}
+        <a
+          href="{{ spotify_user.profile_url }}"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="inline-flex items-center gap-2 bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded font-medium text-sm transition-colors"
+          title="Open your Spotify profile"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/>
+          </svg>
+          {{ spotify_user.display_name }}
+        </a>
+      {% else %}
+        <button
+          id="login-btn"
+          onclick="openSpotifyLogin()"
+          class="inline-flex items-center gap-2 bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded font-medium text-sm transition-colors"
+        >
+          Login to Spotify
+        </button>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Tab nav -->
+  <div class="border-b border-gray-800 mb-6">
+    <nav class="-mb-px flex gap-1">
+      <button id="tab-library"        onclick="switchTab('library')"        class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-green-500 text-white">Library</button>
+      <button id="tab-audio-features" onclick="switchTab('audio-features')" class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-transparent text-gray-400 hover:text-gray-200">Audio Features</button>
+      <button id="tab-playlists"      onclick="switchTab('playlists')"      class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-transparent text-gray-400 hover:text-gray-200">Playlists</button>
+      <button id="tab-analysis"       onclick="switchTab('analysis')"       class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-transparent text-gray-400 hover:text-gray-200">Analysis</button>
+    </nav>
+  </div>
+
+  <!-- Library pane -->
+  <div id="pane-library">
+    <div class="mb-4 flex gap-2">
+      <input type="hidden" id="sort-field" name="sort" value="{{ sort }}">
+      <input type="hidden" id="dir-field" name="dir" value="{{ dir }}">
+      <input
+        id="q-input"
+        type="text"
+        name="q"
+        value="{{ q }}"
+        placeholder="Filter by title, artist, or album…"
+        autocomplete="off"
+        hx-get="{% url 'tracks_table' %}"
+        hx-trigger="input changed delay:300ms"
+        hx-target="#tracks-table"
+        hx-include="#sort-field, #dir-field"
+        hx-push-url="true"
+        class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm placeholder-gray-500 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500"
+      >
+    </div>
+    <div id="tracks-table">
+      {% include "spotify/partials/tracks_table.html" %}
+    </div>
+  </div>
+
+  <!-- Audio Features pane (hidden by default, lazy loaded on first tab activation) -->
+  <div id="pane-audio-features" class="hidden">
+    <div class="mb-4 flex gap-2">
+      <input type="hidden" id="af-sort-field" name="sort" value="title">
+      <input type="hidden" id="af-dir-field" name="dir" value="asc">
+      <input
+        id="af-q-input"
+        type="text"
+        name="q"
+        value=""
+        placeholder="Filter by title or artist…"
+        autocomplete="off"
+        hx-get="{% url 'audio_features_table' %}"
+        hx-trigger="input changed delay:300ms"
+        hx-target="#audio-features-table"
+        hx-include="#af-sort-field, #af-dir-field"
+        hx-push-url="true"
+        class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm placeholder-gray-500 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500"
+      >
+    </div>
+    <div id="audio-features-table">
+      <!-- Loaded via HTMX on first tab activation -->
+    </div>
+  </div>
+
+  <!-- Analysis pane (hidden by default, lazy loaded on first tab activation) -->
+  <div id="pane-analysis" class="hidden">
+    <div id="analysis-overview">
+      <!-- Loaded via HTMX on first tab activation -->
+    </div>
+  </div>
+
+  <!-- Playlists pane (hidden by default, lazy loaded on first tab activation) -->
+  <div id="pane-playlists" class="hidden">
+    <div class="mb-4 flex gap-2">
+      <input type="hidden" id="pl-sort-field" name="sort" value="name">
+      <input type="hidden" id="pl-dir-field" name="dir" value="asc">
+      <input type="hidden" id="pl-year-field" name="year" value="">
+      <input type="hidden" id="pl-stale-field" name="stale" value="">
+      <input
+        id="pl-q-input"
+        type="text"
+        name="q"
+        value=""
+        placeholder="Filter by name, description, or owner…"
+        autocomplete="off"
+        hx-get="{% url 'playlists_grid' %}"
+        hx-trigger="input changed delay:300ms"
+        hx-target="#playlists-grid"
+        hx-include="#pl-sort-field, #pl-dir-field, #pl-year-field, #pl-stale-field"
+        class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm placeholder-gray-500 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500"
+      >
+    </div>
+    <div id="playlists-grid">
+      <!-- Loaded via HTMX on first tab activation -->
+    </div>
+  </div>
+
+</div>
+
+<script>
+  var TABS = ['library', 'audio-features', 'playlists', 'analysis'];
+  var afLoaded = false;
+  var playlistsLoaded = false;
+  var analysisLoaded = false;
+
+  function switchTab(name) {
+    TABS.forEach(function(tab) {
+      var isActive = tab === name;
+      var pane    = document.getElementById('pane-' + tab);
+      var btn     = document.getElementById('tab-' + tab);
+      var actions = document.getElementById('actions-' + tab);
+      var subtitle = document.getElementById('subtitle-' + tab);
+
+      if (pane)     pane.classList.toggle('hidden', !isActive);
+      if (actions)  actions.classList.toggle('hidden', !isActive);
+      if (subtitle) subtitle.classList.toggle('hidden', !isActive);
+
+      if (btn) {
+        if (isActive) {
+          btn.classList.add('border-green-500', 'text-white');
+          btn.classList.remove('border-transparent', 'text-gray-400', 'hover:text-gray-200');
+        } else {
+          btn.classList.remove('border-green-500', 'text-white');
+          btn.classList.add('border-transparent', 'text-gray-400', 'hover:text-gray-200');
+        }
+      }
+    });
+
+    // Lazy-load audio features on first activation
+    if (name === 'audio-features' && !afLoaded) {
+      htmx.ajax('GET', '{% url "audio_features_table" %}', {
+        target: '#audio-features-table',
+        swap: 'innerHTML'
+      });
+      afLoaded = true;
+    }
+
+    // Lazy-load playlists on first activation
+    if (name === 'playlists' && !playlistsLoaded) {
+      htmx.ajax('GET', '{% url "playlists_grid" %}', {
+        target: '#playlists-grid',
+        swap: 'innerHTML'
+      });
+      playlistsLoaded = true;
+    }
+
+    // Lazy-load analysis on first activation
+    if (name === 'analysis' && !analysisLoaded) {
+      htmx.ajax('GET', '{% url "analysis:overview" %}', {
+        target: '#analysis-overview',
+        swap: 'innerHTML'
+      });
+      analysisLoaded = true;
+    }
+
+    history.replaceState(null, '', '#' + name);
+  }
+
+  // Restore tab from URL hash on page load
+  (function() {
+    var hash = window.location.hash.replace('#', '');
+    if (TABS.indexOf(hash) !== -1 && hash !== 'library') {
+      switchTab(hash);
+    }
+  })();
+
+  function openModal() {
+    document.getElementById('track-modal').classList.remove('hidden');
+  }
+
+  function closeModal() {
+    document.getElementById('track-modal').classList.add('hidden');
+  }
+
+  // Open the modal whenever HTMX swaps content into the track modal container.
+  document.body.addEventListener('htmx:afterSwap', function(e) {
+    if (e.detail.target && e.detail.target.id === 'track-modal-content') {
+      openModal();
+    }
+  });
+
+  function openSpotifyLogin() {
+    const popup = window.open(
+      "{% url 'spotify_login' %}",
+      'spotify-auth',
+      'width=500,height=700,left=' + Math.round((screen.width - 500) / 2) + ',top=' + Math.round((screen.height - 700) / 2)
+    );
+
+    window.addEventListener('message', function onAuth(event) {
+      if (event.origin !== window.location.origin) return;
+      if (event.data === 'spotify-auth-complete') {
+        window.removeEventListener('message', onAuth);
+        if (popup && !popup.closed) popup.close();
+        window.location.reload();
+      }
+    });
+  }
+
+  // ── Toast notifications ──────────────────────────────────────────────────
+
+  function showToast(options) {
+    // options: { message, type='info'|'success'|'warning'|'error', persistent=false, onClick=null, duration=4000 }
+    var container = document.getElementById('toast-container');
+    var toast = document.createElement('div');
+
+    var borderColor = options.type === 'error'   ? 'border-red-600'    :
+                      options.type === 'warning'  ? 'border-amber-500'  :
+                      options.type === 'success'  ? 'border-green-600'  :
+                                                    'border-gray-600';
+    var dotColor   = options.type === 'error'   ? 'bg-red-500'    :
+                     options.type === 'warning'  ? 'bg-amber-400'  :
+                     options.type === 'success'  ? 'bg-green-500'  :
+                                                   'bg-gray-400';
+
+    toast.className = [
+      'pointer-events-auto flex items-start gap-3',
+      'bg-gray-900 border', borderColor,
+      'rounded-xl px-4 py-3 shadow-2xl text-sm text-gray-100',
+      'max-w-xs w-full',
+      'transition-all duration-300 ease-out',
+      'opacity-0 translate-x-8',
+    ].join(' ');
+
+    // Coloured dot
+    var dot = document.createElement('span');
+    dot.className = dotColor + ' mt-1 w-2 h-2 rounded-full flex-shrink-0';
+    toast.appendChild(dot);
+
+    var body = document.createElement('div');
+    body.className = 'flex-1 min-w-0';
+
+    var msg = document.createElement('div');
+    msg.className = 'leading-snug';
+    msg.textContent = options.message;
+    body.appendChild(msg);
+
+    if (options.persistent) {
+      var hint = document.createElement('div');
+      hint.className = 'text-xs mt-1 ' + (options.type === 'error' ? 'text-red-400' : 'text-gray-400');
+      hint.textContent = 'Click for details';
+      body.appendChild(hint);
+      toast.classList.add('cursor-pointer');
+      toast.addEventListener('click', function() {
+        dismissToast(toast);
+        if (options.onClick) options.onClick();
+      });
+    } else {
+      // Dismiss button
+      var x = document.createElement('button');
+      x.className = 'flex-shrink-0 text-gray-500 hover:text-gray-300 leading-none text-base ml-1';
+      x.textContent = '×';
+      x.addEventListener('click', function(e) { e.stopPropagation(); dismissToast(toast); });
+      toast.appendChild(x);
+    }
+
+    toast.insertBefore(body, toast.lastChild || null);
+    container.appendChild(toast);
+
+    // Animate in (double rAF ensures transition fires)
+    requestAnimationFrame(function() {
+      requestAnimationFrame(function() {
+        toast.classList.remove('opacity-0', 'translate-x-8');
+      });
+    });
+
+    if (!options.persistent) {
+      setTimeout(function() { dismissToast(toast); }, options.duration || 4000);
+    }
+
+    return toast;
+  }
+
+  function dismissToast(toast) {
+    toast.classList.add('opacity-0', 'translate-x-8');
+    setTimeout(function() { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 300);
+  }
+
+  // ── Sync panel ───────────────────────────────────────────────────────────
+
+  // Session-level job registry: jobId → { label, statusUrl, status, history: [{ts, done}] }
+  var _jobs = {};
+  var _panelExpanded = false;
+
+  function toggleSyncPanel() {
+    _panelExpanded = !_panelExpanded;
+    var body = document.getElementById('sync-panel-body');
+    var chevron = document.getElementById('sync-panel-chevron');
+    body.classList.toggle('hidden', !_panelExpanded);
+    chevron.style.transform = _panelExpanded ? 'rotate(180deg)' : '';
+  }
+
+  function _openSyncPanel() {
+    if (!_panelExpanded) {
+      _panelExpanded = true;
+      var body = document.getElementById('sync-panel-body');
+      var chevron = document.getElementById('sync-panel-chevron');
+      body.classList.remove('hidden');
+      chevron.style.transform = 'rotate(180deg)';
+    }
+    document.getElementById('sync-panel').classList.remove('hidden');
+  }
+
+  function _updatePanelBadge() {
+    var running = Object.values(_jobs).filter(function(j) { return j.status === 'running'; }).length;
+    var badge = document.getElementById('sync-panel-badge');
+    var total = Object.keys(_jobs).length;
+    badge.textContent = total;
+    badge.className = running > 0
+      ? 'ml-1 inline-flex items-center justify-center w-5 h-5 text-xs font-bold rounded-full bg-green-700 text-green-100'
+      : 'ml-1 inline-flex items-center justify-center w-5 h-5 text-xs font-bold rounded-full bg-gray-700 text-gray-300';
+  }
+
+  function computeOpsPerSec(history) {
+    // Use last 5 samples
+    var window = history.slice(-5);
+    if (window.length < 2) return null;
+    var dt = window[window.length - 1].ts - window[0].ts;
+    var dd = window[window.length - 1].done - window[0].done;
+    if (dt <= 0) return null;
+    return dd / dt;
+  }
+
+  function _elapsedStr(startedAt) {
+    if (!startedAt) return '';
+    var elapsed = (Date.now() / 1000) - startedAt;
+    if (elapsed < 60) return Math.round(elapsed) + 's';
+    return Math.floor(elapsed / 60) + 'm ' + Math.round(elapsed % 60) + 's';
+  }
+
+  function _renderJobEntry(jobId) {
+    var job = _jobs[jobId];
+    if (!job) return;
+
+    var entryId = 'sync-job-' + jobId;
+    var existing = document.getElementById(entryId);
+
+    var progress = job.progress || { done: 0, total: 0 };
+    var pct = (progress.total > 0) ? Math.min(100, Math.round(progress.done / progress.total * 100)) : null;
+    var opsPerSec = computeOpsPerSec(job.history || []);
+
+    var statusIcon, statusColor;
+    if (job.status === 'running') {
+      statusIcon = '<svg class="animate-spin w-4 h-4 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>';
+      statusColor = 'text-blue-400';
+    } else if (job.status === 'complete') {
+      statusIcon = '<svg class="w-4 h-4 flex-shrink-0 text-green-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>';
+      statusColor = 'text-green-400';
+    } else {
+      statusIcon = '<svg class="w-4 h-4 flex-shrink-0 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>';
+      statusColor = 'text-red-400';
+    }
+
+    var barHtml;
+    if (job.status === 'running') {
+      if (pct !== null) {
+        barHtml = '<div class="w-full bg-gray-700 rounded-full h-1.5 mt-1">' +
+                  '<div class="bg-blue-500 h-1.5 rounded-full transition-all duration-500" style="width:' + pct + '%"></div>' +
+                  '</div>';
+      } else {
+        // Indeterminate: animated shimmer
+        barHtml = '<div class="w-full bg-gray-700 rounded-full h-1.5 mt-1 overflow-hidden">' +
+                  '<div class="h-1.5 rounded-full bg-blue-500 animate-pulse w-2/3"></div>' +
+                  '</div>';
+      }
+    } else if (job.status === 'complete') {
+      barHtml = '<div class="w-full bg-gray-700 rounded-full h-1.5 mt-1">' +
+                '<div class="bg-green-500 h-1.5 rounded-full" style="width:100%"></div>' +
+                '</div>';
+    } else {
+      barHtml = '<div class="w-full bg-gray-700 rounded-full h-1.5 mt-1">' +
+                '<div class="bg-red-500 h-1.5 rounded-full" style="width:100%"></div>' +
+                '</div>';
+    }
+
+    var metaLine = '';
+    if (job.status === 'running') {
+      var parts = [];
+      if (pct !== null) parts.push(pct + '%');
+      if (opsPerSec !== null) parts.push(opsPerSec.toFixed(1) + ' ops/s');
+      if (parts.length) metaLine = '<span class="text-xs text-gray-500">' + parts.join(' · ') + '</span>';
+    } else if (job.status === 'complete') {
+      metaLine = '<span class="text-xs text-gray-500">Done in ' + _elapsedStr(job.startedAt) + '</span>';
+    } else {
+      metaLine = '<span class="text-xs text-red-400">Failed</span>';
+    }
+
+    var html =
+      '<div class="flex items-start gap-2">' +
+        '<span class="mt-0.5 ' + statusColor + '">' + statusIcon + '</span>' +
+        '<div class="flex-1 min-w-0">' +
+          '<div class="flex items-center justify-between gap-1">' +
+            '<span class="text-sm font-medium text-gray-200 truncate">' + job.label + '</span>' +
+            '<span class="text-xs text-gray-500 flex-shrink-0">' + _elapsedStr(job.startedAt) + '</span>' +
+          '</div>' +
+          barHtml +
+          '<div class="mt-0.5">' + metaLine + '</div>' +
+        '</div>' +
+      '</div>';
+
+    if (existing) {
+      existing.innerHTML = html;
+    } else {
+      var entry = document.createElement('div');
+      entry.id = entryId;
+      entry.className = 'bg-gray-800 border border-gray-700 rounded-lg px-3 py-2';
+      entry.innerHTML = html;
+      document.getElementById('sync-panel-body').appendChild(entry);
+    }
+  }
+
+  function registerJob(jobId, label, statusUrl) {
+    _jobs[jobId] = {
+      label: label,
+      statusUrl: statusUrl,
+      status: 'running',
+      startedAt: Date.now() / 1000,
+      progress: { done: 0, total: 0 },
+      history: [],
+    };
+    _openSyncPanel();
+    _updatePanelBadge();
+    _renderJobEntry(jobId);
+    _pollJob(jobId);
+  }
+
+  function updateJobEntry(jobId, data) {
+    var job = _jobs[jobId];
+    if (!job) return;
+    job.status = data.status;
+    if (data.progress) {
+      job.progress = data.progress;
+      job.history.push({ ts: Date.now() / 1000, done: data.progress.done });
+    }
+    _renderJobEntry(jobId);
+    _updatePanelBadge();
+  }
+
+  function _pollJob(jobId) {
+    var job = _jobs[jobId];
+    if (!job) return;
+
+    fetch(job.statusUrl)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      updateJobEntry(jobId, data);
+      if (data.status === 'running') {
+        setTimeout(function() { _pollJob(jobId); }, 2000);
+      } else {
+        // Job finished — fire the appropriate completion handler
+        if (job._onComplete) job._onComplete(data);
+      }
+    })
+    .catch(function() {
+      setTimeout(function() { _pollJob(jobId); }, 3000);
+    });
+  }
+
+  // ── Library sync ─────────────────────────────────────────────────────────
+
+  var SYNC_LIBRARY_STATUS_URL_TEMPLATE = '{% url "sync_library_status" job_id="__JOB_ID__" %}';
+
+  function startLibrarySync() {
+    var btn = document.getElementById('sync-btn');
+    var label = document.getElementById('sync-label');
+    btn.disabled = true;
+    label.textContent = 'Starting…';
+
+    fetch('{% url "sync_library" %}', {
+      method: 'POST',
+      headers: { 'X-CSRFToken': getCsrfToken() },
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      btn.disabled = false;
+      label.textContent = 'Sync Library';
+      var statusUrl = SYNC_LIBRARY_STATUS_URL_TEMPLATE.replace('__JOB_ID__', data.job_id);
+      registerJob(data.job_id, 'Library Sync', statusUrl);
+      _jobs[data.job_id]._onComplete = function(result) {
+        if (result.status === 'complete') {
+          var stats = result.stats;
+          var synced = stats.synced || 0;
+          var msg = 'Library sync complete: ' + synced + ' new track' + (synced !== 1 ? 's' : '') + ' synced';
+          showToast({ message: msg, type: 'success', persistent: true, onClick: function() { showLibrarySyncSummary(stats); } });
+        } else {
+          showToast({ message: 'Library sync failed — click for details', type: 'error', persistent: true,
+            onClick: function() { showLibrarySyncSummary({ synced: 0, error: result.error || 'Unknown error' }); } });
+        }
+      };
+    })
+    .catch(function() {
+      btn.disabled = false;
+      label.textContent = 'Sync Library';
+      showToast({ message: 'Failed to start library sync', type: 'error', persistent: true });
+    });
+  }
+
+  function showLibrarySyncSummary(stats) {
+    var errorSection = stats.error
+      ? '<div class="mt-5"><h3 class="text-xs font-semibold uppercase tracking-wider text-red-400 mb-2">Error</h3>' +
+        '<pre class="text-xs text-red-300 whitespace-pre-wrap break-all bg-gray-800 rounded p-3 max-h-60 overflow-y-auto">' + stats.error + '</pre></div>'
+      : '';
+
+    document.getElementById('sync-summary-content').innerHTML =
+      '<div class="flex items-center justify-between mb-5">' +
+        '<h2 class="text-base font-semibold">Library Sync Summary</h2>' +
+        '<button onclick="closeSyncSummary()" class="text-gray-400 hover:text-white text-xl leading-none">×</button>' +
+      '</div>' +
+      '<dl class="grid grid-cols-1 gap-3 text-sm">' +
+        '<div class="bg-gray-800 rounded-lg p-3 text-center"><dt class="text-gray-400 text-xs mb-1">New Tracks Synced</dt><dd class="text-2xl font-bold text-green-400">' + (stats.synced || 0) + '</dd></div>' +
+      '</dl>' +
+      errorSection +
+      (stats.error ? '' : '<p class="text-xs text-gray-500 mt-4">Sync completed successfully.</p>');
+
+    document.getElementById('sync-summary-modal').classList.remove('hidden');
+  }
+
+  // ── Audio features sync ───────────────────────────────────────────────────
+
+  var SYNC_AF_STATUS_URL_TEMPLATE = '{% url "sync_audio_features_status" job_id="__JOB_ID__" %}';
+
+  function startAudioFeaturesSync() {
+    var btn = document.getElementById('sync-af-btn');
+    var label = document.getElementById('sync-af-label');
+    btn.disabled = true;
+    label.textContent = 'Starting…';
+
+    fetch('{% url "sync_audio_features" %}', {
+      method: 'POST',
+      headers: { 'X-CSRFToken': getCsrfToken() },
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      btn.disabled = false;
+      label.textContent = 'Sync Audio Features';
+      var statusUrl = SYNC_AF_STATUS_URL_TEMPLATE.replace('__JOB_ID__', data.job_id);
+      registerJob(data.job_id, 'Audio Features Sync', statusUrl);
+      _jobs[data.job_id]._onComplete = function(result) {
+        htmx.ajax('GET', '{% url "audio_features_table" %}', { target: '#audio-features-table', swap: 'innerHTML' });
+        if (result.status === 'complete') {
+          var stats = result.stats;
+          var saved = stats.saved || 0;
+          var notFound = stats.not_found || 0;
+          var msg = 'Audio features sync complete: ' + saved + ' saved' + (notFound ? ', ' + notFound + ' not found' : '');
+          showToast({ message: msg, type: 'success', persistent: true, onClick: function() { showAudioFeaturesSyncSummary(stats); } });
+        } else {
+          showToast({ message: 'Audio features sync failed — click for details', type: 'error', persistent: true,
+            onClick: function() { showAudioFeaturesSyncSummary({ saved: 0, not_found: 0, error: result.error || 'Unknown error' }); } });
+        }
+      };
+    })
+    .catch(function() {
+      btn.disabled = false;
+      label.textContent = 'Sync Audio Features';
+      showToast({ message: 'Failed to start audio features sync', type: 'error', persistent: true });
+    });
+  }
+
+  function showAudioFeaturesSyncSummary(stats) {
+    var errorSection = stats.error
+      ? '<div class="mt-5"><h3 class="text-xs font-semibold uppercase tracking-wider text-red-400 mb-2">Error</h3>' +
+        '<pre class="text-xs text-red-300 whitespace-pre-wrap break-all bg-gray-800 rounded p-3 max-h-60 overflow-y-auto">' + stats.error + '</pre></div>'
+      : '';
+
+    document.getElementById('sync-summary-content').innerHTML =
+      '<div class="flex items-center justify-between mb-5">' +
+        '<h2 class="text-base font-semibold">Audio Features Sync Summary</h2>' +
+        '<button onclick="closeSyncSummary()" class="text-gray-400 hover:text-white text-xl leading-none">×</button>' +
+      '</div>' +
+      '<dl class="grid grid-cols-2 gap-3 text-sm">' +
+        '<div class="bg-gray-800 rounded-lg p-3 text-center"><dt class="text-gray-400 text-xs mb-1">Saved</dt><dd class="text-2xl font-bold text-green-400">' + (stats.saved || 0) + '</dd></div>' +
+        '<div class="bg-gray-800 rounded-lg p-3 text-center"><dt class="text-gray-400 text-xs mb-1">Not Found</dt><dd class="text-2xl font-bold ' + ((stats.not_found || 0) > 0 ? 'text-amber-400' : 'text-gray-500') + '">' + (stats.not_found || 0) + '</dd></div>' +
+      '</dl>' +
+      errorSection +
+      (stats.error ? '' : '<p class="text-xs text-gray-500 mt-4">Sync completed successfully.</p>');
+
+    document.getElementById('sync-summary-modal').classList.remove('hidden');
+  }
+
+  // ── Lyrics sync ───────────────────────────────────────────────────────────
+
+  var SYNC_LYRICS_STATUS_URL_TEMPLATE = '{% url "sync_lyrics_status" job_id="__JOB_ID__" %}';
+
+  function startLyricsSync() {
+    var btn = document.getElementById('sync-lyrics-btn');
+    var label = document.getElementById('sync-lyrics-label');
+    btn.disabled = true;
+    label.textContent = 'Starting…';
+
+    fetch('{% url "sync_lyrics" %}', {
+      method: 'POST',
+      headers: { 'X-CSRFToken': getCsrfToken() },
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      btn.disabled = false;
+      label.textContent = 'Sync Lyrics';
+      var statusUrl = SYNC_LYRICS_STATUS_URL_TEMPLATE.replace('__JOB_ID__', data.job_id);
+      registerJob(data.job_id, 'Lyrics Sync', statusUrl);
+      _jobs[data.job_id]._onComplete = function(result) {
+        if (result.status === 'complete') {
+          var stats = result.stats;
+          var saved = stats.saved || 0;
+          var notFound = stats.not_found || 0;
+          var msg = 'Lyrics sync complete: ' + saved + ' saved' + (notFound ? ', ' + notFound + ' not found' : '');
+          showToast({ message: msg, type: 'success', persistent: true, onClick: function() { showLyricsSyncSummary(stats); } });
+        } else {
+          showToast({ message: 'Lyrics sync failed — click for details', type: 'error', persistent: true,
+            onClick: function() { showLyricsSyncSummary({ saved: 0, not_found: 0, error: result.error || 'Unknown error' }); } });
+        }
+      };
+    })
+    .catch(function() {
+      btn.disabled = false;
+      label.textContent = 'Sync Lyrics';
+      showToast({ message: 'Failed to start lyrics sync', type: 'error', persistent: true });
+    });
+  }
+
+  function showLyricsSyncSummary(stats) {
+    var errorSection = stats.error
+      ? '<div class="mt-5"><h3 class="text-xs font-semibold uppercase tracking-wider text-red-400 mb-2">Error</h3>' +
+        '<pre class="text-xs text-red-300 whitespace-pre-wrap break-all bg-gray-800 rounded p-3 max-h-60 overflow-y-auto">' + stats.error + '</pre></div>'
+      : '';
+
+    document.getElementById('sync-summary-content').innerHTML =
+      '<div class="flex items-center justify-between mb-5">' +
+        '<h2 class="text-base font-semibold">Lyrics Sync Summary</h2>' +
+        '<button onclick="closeSyncSummary()" class="text-gray-400 hover:text-white text-xl leading-none">×</button>' +
+      '</div>' +
+      '<dl class="grid grid-cols-2 gap-3 text-sm">' +
+        '<div class="bg-gray-800 rounded-lg p-3 text-center"><dt class="text-gray-400 text-xs mb-1">Saved</dt><dd class="text-2xl font-bold text-indigo-400">' + (stats.saved || 0) + '</dd></div>' +
+        '<div class="bg-gray-800 rounded-lg p-3 text-center"><dt class="text-gray-400 text-xs mb-1">Not Found</dt><dd class="text-2xl font-bold ' + ((stats.not_found || 0) > 0 ? 'text-amber-400' : 'text-gray-500') + '">' + (stats.not_found || 0) + '</dd></div>' +
+      '</dl>' +
+      errorSection +
+      (stats.error ? '' : '<p class="text-xs text-gray-500 mt-4">Sync completed successfully.</p>');
+
+    document.getElementById('sync-summary-modal').classList.remove('hidden');
+  }
+
+  // ── Playlist sync ────────────────────────────────────────────────────────
+
+  var SYNC_STATUS_URL_TEMPLATE = '{% url "sync_playlists_status" job_id="__JOB_ID__" %}';
+
+  function getCsrfToken() {
+    var match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+    return match ? decodeURIComponent(match[1]) : '';
+  }
+
+  function startPlaylistSync() {
+    var btn = document.getElementById('sync-playlists-btn');
+    var label = document.getElementById('sync-playlists-label');
+    btn.disabled = true;
+    label.textContent = 'Starting…';
+
+    fetch('{% url "sync_playlists" %}', {
+      method: 'POST',
+      headers: { 'X-CSRFToken': getCsrfToken() },
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      btn.disabled = false;
+      label.textContent = 'Sync Playlists';
+      var statusUrl = SYNC_STATUS_URL_TEMPLATE.replace('__JOB_ID__', data.job_id);
+      registerJob(data.job_id, 'Playlist Sync', statusUrl);
+      _jobs[data.job_id]._onComplete = function(result) {
+        htmx.ajax('GET', '{% url "playlists_grid" %}', { target: '#playlists-grid', swap: 'innerHTML' });
+        if (result.status === 'complete') {
+          var stats = result.stats;
+          var errorCount = stats.errors ? stats.errors.length : 0;
+          var msg = 'Sync complete: ' + stats.playlists + ' playlist' + (stats.playlists !== 1 ? 's' : '') +
+                    ', ' + stats.tracks + ' track' + (stats.tracks !== 1 ? 's' : '') +
+                    (errorCount ? ' (' + errorCount + ' error' + (errorCount !== 1 ? 's' : '') + ')' : '');
+          showToast({ message: msg, type: errorCount > 0 ? 'warning' : 'success', persistent: true,
+            onClick: function() { showSyncSummary(stats); } });
+        } else {
+          showToast({ message: 'Sync failed — click for details', type: 'error', persistent: true,
+            onClick: function() { showSyncSummary({ playlists: 0, tracks: 0, errors: [{ type: 'sync', id: '', name: 'Sync error', playlist: '', error: result.error || 'Unknown error' }] }); } });
+        }
+      };
+    })
+    .catch(function() {
+      btn.disabled = false;
+      label.textContent = 'Sync Playlists';
+      showToast({ message: 'Failed to start sync', type: 'error', persistent: true });
+    });
+  }
+
+  function showSyncSummary(stats) {
+    var errors = stats.errors || [];
+    var errorRows = errors.map(function(e) {
+      var where = e.playlist ? ' <span class="text-gray-500">in ' + e.playlist + '</span>' : '';
+      return '<li class="border-l-2 border-red-700 pl-2 py-0.5">' +
+             '<span class="text-gray-200">' + (e.name || e.id) + '</span>' + where +
+             '<br><span class="text-red-400 text-xs">' + e.error + '</span></li>';
+    }).join('');
+
+    var errorSection = errors.length > 0
+      ? '<div class="mt-5"><h3 class="text-xs font-semibold uppercase tracking-wider text-red-400 mb-2">Errors (' + errors.length + ')</h3>' +
+        '<ul class="space-y-2 text-sm max-h-60 overflow-y-auto pr-1">' + errorRows + '</ul></div>'
+      : '';
+
+    var successRate = stats.playlists > 0 || stats.tracks > 0
+      ? '<p class="text-xs text-gray-500 mt-4">' + (errors.length === 0 ? 'All items synced successfully.' : errors.length + ' item' + (errors.length !== 1 ? 's' : '') + ' skipped due to errors.') + '</p>'
+      : '';
+
+    document.getElementById('sync-summary-content').innerHTML =
+      '<div class="flex items-center justify-between mb-5">' +
+        '<h2 class="text-base font-semibold">Sync Summary</h2>' +
+        '<button onclick="closeSyncSummary()" class="text-gray-400 hover:text-white text-xl leading-none">×</button>' +
+      '</div>' +
+      '<dl class="grid grid-cols-3 gap-3 text-sm">' +
+        '<div class="bg-gray-800 rounded-lg p-3 text-center"><dt class="text-gray-400 text-xs mb-1">Playlists</dt><dd class="text-2xl font-bold text-green-400">' + stats.playlists + '</dd></div>' +
+        '<div class="bg-gray-800 rounded-lg p-3 text-center"><dt class="text-gray-400 text-xs mb-1">Tracks</dt><dd class="text-2xl font-bold text-green-400">' + stats.tracks + '</dd></div>' +
+        '<div class="bg-gray-800 rounded-lg p-3 text-center"><dt class="text-gray-400 text-xs mb-1">Errors</dt><dd class="text-2xl font-bold ' + (errors.length > 0 ? 'text-red-400' : 'text-gray-500') + '">' + errors.length + '</dd></div>' +
+      '</dl>' +
+      errorSection +
+      successRate;
+
+    document.getElementById('sync-summary-modal').classList.remove('hidden');
+  }
+
+  function closeSyncSummary() {
+    document.getElementById('sync-summary-modal').classList.add('hidden');
+  }
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      closeSyncSummary();
+      closeModal();
+    }
+  });
+</script>
+{% endblock %}

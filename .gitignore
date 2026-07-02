@@ -1,0 +1,14 @@
+.env
+.DS_Store
+db.sqlite3
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.mp3
+run_report.md
+TODO.md
+.claude/
+.tasks/
+spotify/data/
+CLAUDE.md

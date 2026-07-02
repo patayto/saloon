@@ -1,0 +1,129 @@
+{% load spotify_extras %}
+<div id="mashup-candidates-container">
+
+  {% if no_af %}
+  <p class="text-xs text-gray-500">No audio features available for this track — fetch them first.</p>
+
+  {% else %}
+
+  <!-- Filter controls -->
+  <form
+    hx-get="{% url 'track_mashup_candidates' track.id %}"
+    hx-target="#mashup-candidates-container"
+    hx-swap="outerHTML"
+    hx-trigger="change"
+    class="flex flex-wrap gap-4 items-center mb-3"
+  >
+    <label class="flex items-center gap-1.5 text-xs text-gray-400 cursor-pointer select-none">
+      <input type="checkbox" name="key_compat" value="1" {% if key_compat == "1" %}checked{% endif %}
+             class="accent-green-500 rounded">
+      Compatible key only
+    </label>
+    <div class="flex items-center gap-1.5 text-xs text-gray-400">
+      <span>BPM within</span>
+      <select name="bpm_max"
+              class="bg-gray-800 border border-gray-700 rounded px-1.5 py-0.5 text-xs text-gray-300 focus:outline-none">
+        <option value="" {% if not bpm_max %}selected{% endif %}>any</option>
+        <option value="5"  {% if bpm_max == "5"  %}selected{% endif %}>5%</option>
+        <option value="10" {% if bpm_max == "10" %}selected{% endif %}>10%</option>
+        <option value="20" {% if bpm_max == "20" %}selected{% endif %}>20%</option>
+      </select>
+    </div>
+    {% if query_has_lyric %}
+    <label class="flex items-center gap-1.5 text-xs text-gray-400 cursor-pointer select-none">
+      <input type="checkbox" name="sort_by" value="lyric" {% if sort_by == "lyric" %}checked{% endif %}
+             class="accent-purple-500 rounded">
+      Sort by lyrics
+    </label>
+    {% endif %}
+    <span class="text-xs text-gray-600">{{ candidates|length }} result{% if candidates|length != 1 %}s{% endif %}</span>
+    <!-- spinner shown by htmx during refresh request -->
+    <svg id="mashup-refresh-spinner" class="htmx-indicator w-3 h-3 animate-spin text-gray-500 ml-auto" fill="none" viewBox="0 0 24 24">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z"/>
+    </svg>
+    <button type="button"
+      hx-get="{% url 'track_mashup_candidates' track.id %}"
+      hx-target="#mashup-candidates-container"
+      hx-swap="outerHTML"
+      hx-include="closest form"
+      hx-indicator="#mashup-refresh-spinner"
+      title="Refresh mashup candidates"
+      class="{% if not query_has_lyric %}ml-auto {% endif %}p-1 text-gray-500 hover:text-gray-300 transition-colors rounded">
+      <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+      </svg>
+    </button>
+  </form>
+
+  {% if not query_has_lyric %}
+  <p class="text-xs text-gray-600 italic mb-2">Lyric similarity unavailable — no embedding for this track. Run <code>compute_lyric_embeddings</code> to enable.</p>
+  {% endif %}
+
+  <!-- Results -->
+  {% if candidates %}
+  <!-- Column headers -->
+  <div class="flex items-center gap-2 px-2 pb-1 text-xs text-gray-600 border-b border-gray-800/60 mb-0.5">
+    <div class="flex-1">Track</div>
+    <div class="flex-shrink-0 w-20 text-right">BPM</div>
+    <div class="flex-shrink-0 w-16 text-center">Key</div>
+    <div class="flex-shrink-0 w-8 text-right">Audio</div>
+    {% if query_has_lyric %}<div class="flex-shrink-0 w-10 text-right">Lyrics</div>{% endif %}
+  </div>
+  <div class="max-h-72 overflow-y-auto space-y-0.5 pr-1">
+    {% for c in candidates %}
+    <div
+      class="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-800/70 cursor-pointer group text-xs"
+      hx-get="{% url 'track_detail' c.track.id %}"
+      hx-target="#track-modal-content"
+      hx-swap="innerHTML"
+      onclick="openModal()"
+    >
+      <!-- Name + artists -->
+      <div class="flex-1 min-w-0">
+        <p class="text-gray-200 truncate group-hover:text-white transition-colors">{{ c.track.name }}</p>
+        <p class="text-gray-500 truncate">
+          {% for artist in c.track.artists.all %}{{ artist.name }}{% if not forloop.last %}, {% endif %}{% endfor %}
+        </p>
+      </div>
+
+      <!-- BPM diff -->
+      <div class="text-right flex-shrink-0 w-20 tabular-nums">
+        <p class="text-gray-300">{{ c.af.tempo|floatformat:0 }} BPM</p>
+        <p class="{% if c.bpm_diff_pct <= 5 %}text-green-400{% elif c.bpm_diff_pct <= 10 %}text-yellow-400{% else %}text-gray-500{% endif %}">
+          ±{{ c.bpm_diff_pct }}%
+        </p>
+      </div>
+
+      <!-- Camelot + compat -->
+      <div class="flex-shrink-0 w-16 text-center">
+        <span class="inline-block px-1.5 py-0.5 rounded text-xs font-mono font-medium
+          {% if c.key_compat == 'perfect' %}bg-green-900/60 text-green-300 border border-green-800
+          {% elif c.key_compat == 'compatible' %}bg-emerald-900/50 text-emerald-400 border border-emerald-800/60
+          {% else %}bg-gray-800 text-gray-500 border border-gray-700{% endif %}">
+          {{ c.camelot }}
+        </span>
+      </div>
+
+      <!-- Audio similarity -->
+      <div class="flex-shrink-0 w-8 text-right tabular-nums text-gray-600">
+        {{ c.similarity }}
+      </div>
+
+      <!-- Lyric similarity -->
+      {% if query_has_lyric %}
+      <div class="flex-shrink-0 w-10 text-right tabular-nums {% if c.lyric_sim is not None %}text-purple-400{% else %}text-gray-700{% endif %}">
+        {% if c.lyric_sim is not None %}{{ c.lyric_sim|floatformat:2 }}{% else %}—{% endif %}
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  {% else %}
+  <p class="text-xs text-gray-500">No candidates match the current filters.</p>
+  {% endif %}
+
+  {% endif %}
+</div>

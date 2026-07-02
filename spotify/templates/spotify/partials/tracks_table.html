@@ -1,0 +1,196 @@
+{% load spotify_extras %}
+
+{% comment %}
+Inline script keeps the hidden sort/dir fields in sync with whatever sort is
+currently displayed — so subsequent filter keystrokes preserve the sort state.
+{% endcomment %}
+<script>
+  (function() {
+    var s = document.getElementById('sort-field');
+    var d = document.getElementById('dir-field');
+    if (s) s.value = '{{ sort }}';
+    if (d) d.value = '{{ dir }}';
+  })();
+</script>
+
+<!-- Table -->
+<div class="rounded-lg border border-gray-800 overflow-hidden">
+  <table class="w-full text-sm">
+    <thead class="bg-gray-900 text-gray-400 text-xs uppercase tracking-wider">
+      <tr>
+
+        <!-- Added -->
+        <th class="px-4 py-3 text-left font-medium">
+          <a
+            hx-get="{% url 'tracks_table' %}?sort=added_at&dir={{ sort_dirs.added_at }}&q={{ q|urlencode }}&page=1"
+            hx-target="#tracks-table"
+            hx-push-url="true"
+            class="inline-flex items-center gap-1 hover:text-white cursor-pointer select-none"
+          >
+            Added
+            {% if sort == "added_at" %}
+              {% if dir == "asc" %}↑{% else %}↓{% endif %}
+            {% else %}
+              <span class="opacity-30">↕</span>
+            {% endif %}
+          </a>
+        </th>
+
+        <!-- Title -->
+        <th class="px-4 py-3 text-left font-medium">
+          <a
+            hx-get="{% url 'tracks_table' %}?sort=title&dir={{ sort_dirs.title }}&q={{ q|urlencode }}&page=1"
+            hx-target="#tracks-table"
+            hx-push-url="true"
+            class="inline-flex items-center gap-1 hover:text-white cursor-pointer select-none"
+          >
+            Title
+            {% if sort == "title" %}
+              {% if dir == "asc" %}↑{% else %}↓{% endif %}
+            {% else %}
+              <span class="opacity-30">↕</span>
+            {% endif %}
+          </a>
+        </th>
+
+        <!-- Artist (not sortable, filterable) -->
+        <th class="px-4 py-3 text-left font-medium">Artist</th>
+
+        <!-- Album -->
+        <th class="px-4 py-3 text-left font-medium">
+          <a
+            hx-get="{% url 'tracks_table' %}?sort=album&dir={{ sort_dirs.album }}&q={{ q|urlencode }}&page=1"
+            hx-target="#tracks-table"
+            hx-push-url="true"
+            class="inline-flex items-center gap-1 hover:text-white cursor-pointer select-none"
+          >
+            Album
+            {% if sort == "album" %}
+              {% if dir == "asc" %}↑{% else %}↓{% endif %}
+            {% else %}
+              <span class="opacity-30">↕</span>
+            {% endif %}
+          </a>
+        </th>
+
+        <!-- Duration -->
+        <th class="px-4 py-3 text-right font-medium">
+          <a
+            hx-get="{% url 'tracks_table' %}?sort=duration&dir={{ sort_dirs.duration }}&q={{ q|urlencode }}&page=1"
+            hx-target="#tracks-table"
+            hx-push-url="true"
+            class="inline-flex items-center gap-1 justify-end hover:text-white cursor-pointer select-none"
+          >
+            {% if sort == "duration" %}
+              {% if dir == "asc" %}↑{% else %}↓{% endif %}
+            {% else %}
+              <span class="opacity-30">↕</span>
+            {% endif %}
+            Duration
+          </a>
+        </th>
+
+        <!-- Explicit -->
+        <th class="px-4 py-3 text-center font-medium w-8" title="Explicit">E</th>
+
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-gray-800">
+      {% for saved in page %}
+      {% with track=saved.track %}
+      <tr
+        class="hover:bg-gray-800/50 transition-colors group cursor-pointer"
+        hx-get="{% url 'track_detail' track.id %}"
+        hx-target="#track-modal-content"
+        hx-swap="innerHTML"
+      >
+
+        <!-- Added -->
+        <td class="px-4 py-3 text-gray-400 whitespace-nowrap text-xs">
+          {{ saved.added_at|date:"Y-m-d" }}
+        </td>
+
+        <!-- Title -->
+        <td class="px-4 py-3 font-medium max-w-xs">
+          <div class="flex items-center gap-1 min-w-0">
+            <span class="truncate flex-1">{{ track.name }}</span>
+            {% if track.id|in_set:af_ids %}
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-indigo-400 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor" title="Audio features available">
+                <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zm6-4a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zm6-3a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z"/>
+              </svg>
+            {% endif %}
+            {% if track.id|in_set:lyrics_ids %}
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-sky-400 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor" title="Lyrics available">
+                <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clip-rule="evenodd"/>
+              </svg>
+            {% endif %}
+          </div>
+        </td>
+
+        <!-- Artists -->
+        <td class="px-4 py-3 text-gray-300 max-w-xs truncate">
+          {% for artist in track.artists.all %}{{ artist.name }}{% if not forloop.last %}, {% endif %}{% endfor %}
+        </td>
+
+        <!-- Album -->
+        <td class="px-4 py-3 text-gray-300 max-w-xs truncate">
+          {{ track.album.name }}
+        </td>
+
+        <!-- Duration -->
+        <td class="px-4 py-3 text-gray-400 text-right tabular-nums">
+          {{ track.duration_ms|duration_ms }}
+        </td>
+
+        <!-- Explicit -->
+        <td class="px-4 py-3 text-center">
+          {% if track.explicit %}
+            <span class="inline-block bg-gray-600 text-gray-200 text-xs font-bold px-1 rounded">E</span>
+          {% endif %}
+        </td>
+
+      </tr>
+      {% endwith %}
+      {% empty %}
+      <tr>
+        <td colspan="6" class="px-4 py-12 text-center text-gray-500">
+          No tracks found{% if q %} matching "<span class="text-gray-300">{{ q }}</span>"{% endif %}.
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Pagination -->
+{% if page.paginator.num_pages > 1 %}
+<div class="flex items-center justify-between mt-4 text-sm text-gray-400">
+  <span>
+    Page {{ page.number }} of {{ page.paginator.num_pages }}
+    &middot; {{ total_count }} track{{ total_count|pluralize }}
+  </span>
+  <div class="flex gap-2">
+    {% if page.has_previous %}
+    <a
+      hx-get="{% url 'tracks_table' %}?page={{ page.previous_page_number }}&sort={{ sort }}&dir={{ dir }}&q={{ q|urlencode }}"
+      hx-target="#tracks-table"
+      hx-push-url="true"
+      class="px-3 py-1 rounded bg-gray-800 hover:bg-gray-700 cursor-pointer transition-colors"
+    >← Prev</a>
+    {% else %}
+    <span class="px-3 py-1 rounded bg-gray-800 opacity-30 cursor-not-allowed">← Prev</span>
+    {% endif %}
+
+    {% if page.has_next %}
+    <a
+      hx-get="{% url 'tracks_table' %}?page={{ page.next_page_number }}&sort={{ sort }}&dir={{ dir }}&q={{ q|urlencode }}"
+      hx-target="#tracks-table"
+      hx-push-url="true"
+      class="px-3 py-1 rounded bg-gray-800 hover:bg-gray-700 cursor-pointer transition-colors"
+    >Next →</a>
+    {% else %}
+    <span class="px-3 py-1 rounded bg-gray-800 opacity-30 cursor-not-allowed">Next →</span>
+    {% endif %}
+  </div>
+</div>
+{% endif %}

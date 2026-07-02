@@ -1,0 +1,31 @@
+{% if lyrics %}
+  {% if lyrics.instrumental %}
+    <p class="text-sm text-gray-400 italic">This track is instrumental.</p>
+  {% elif lyrics.plain_lyrics %}
+    <div class="max-h-64 overflow-y-auto pr-1 space-y-0 text-sm text-gray-300 leading-relaxed whitespace-pre-wrap font-mono scrollbar-thin scrollbar-thumb-gray-700">{{ lyrics.plain_lyrics }}</div>
+  {% else %}
+    <p class="text-sm text-gray-500 italic">Lyrics stored but empty.</p>
+  {% endif %}
+
+{% elif error %}
+  <div class="rounded-lg bg-gray-800/50 border border-gray-700 px-4 py-3 text-sm text-gray-400">
+    {{ error }}
+  </div>
+
+{% else %}
+  <button
+    hx-post="{% url 'fetch_track_lyrics' track.id %}"
+    hx-target="#track-modal-lyrics"
+    hx-swap="innerHTML"
+    hx-indicator="#fetch-lyrics-spinner"
+    hx-on:htmx:before-request="this.disabled=true; document.getElementById('fetch-lyrics-label').textContent='Fetching…'"
+    class="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded font-medium text-sm transition-colors"
+  >
+    <span id="fetch-lyrics-label">Fetch Lyrics</span>
+    <svg id="fetch-lyrics-spinner" class="htmx-indicator w-4 h-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+    </svg>
+  </button>
+  <p class="mt-2 text-xs text-gray-500">Source: LRCLib community lyrics database.</p>
+{% endif %}
