@@ -1,5 +1,18 @@
 {% load spotify_extras %}
-{% if tags and tags.tags %}
+{% if job_id %}
+  <div
+    hx-get="{% url 'fetch_track_tags_status' track_id job_id %}"
+    hx-trigger="every 2s"
+    hx-swap="outerHTML"
+    class="inline-flex items-center gap-2 text-sm text-gray-400"
+  >
+    <svg class="w-4 h-4 animate-spin shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+    </svg>
+    <span class="text-xs">{{ status_label }}</span>
+  </div>
+{% elif tags and tags.tags %}
   {% with mood=tags.tags.mood theme=tags.tags.theme scene=tags.tags.scene style=tags.tags.style tempo_feel=tags.tags.tempo_feel %}
   <div class="space-y-2">
 
@@ -70,15 +83,8 @@
     hx-post="{% url 'fetch_track_tags' track_id %}"
     hx-target="#track-modal-tags"
     hx-swap="innerHTML"
-    hx-indicator="#fetch-tags-spinner"
-    hx-on:htmx:before-request="this.disabled=true; document.getElementById('fetch-tags-label').textContent='Generating…'"
+    hx-on:htmx:before-request="this.disabled=true"
     class="inline-flex items-center gap-2 bg-violet-700 hover:bg-violet-600 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded font-medium text-sm transition-colors"
-  >
-    <span id="fetch-tags-label">Generate Tags</span>
-    <svg id="fetch-tags-spinner" class="htmx-indicator w-4 h-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
-    </svg>
-  </button>
+  >Generate Tags</button>
   <p class="mt-2 text-xs text-gray-500">Requires OPENROUTER_API_KEY.</p>
 {% endif %}

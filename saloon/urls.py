@@ -14,6 +14,7 @@ urlpatterns = [
     path("tracks/<str:track_id>/mashup-candidates/", spotify_views.track_mashup_candidates, name="track_mashup_candidates"),
     path("tracks/<str:track_id>/fetch-lyrics/", spotify_views.fetch_track_lyrics, name="fetch_track_lyrics"),
     path("tracks/<str:track_id>/fetch-tags/", spotify_views.fetch_track_tags, name="fetch_track_tags"),
+    path("tracks/<str:track_id>/fetch-tags/status/<str:job_id>/", spotify_views.fetch_track_tags_status, name="fetch_track_tags_status"),
     path("lyrics/sync/", spotify_views.sync_lyrics_view, name="sync_lyrics"),
     path("lyrics/sync/status/<str:job_id>/", spotify_views.sync_lyrics_status, name="sync_lyrics_status"),
     path("sync/", spotify_views.sync_library, name="sync_library"),

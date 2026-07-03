@@ -231,15 +231,17 @@ def _call_api(user_message: str, model: str, api_url: str) -> dict:
 
 
 def _call_api_with_retry(
-    user_message: str, models: list[str], api_url: str, max_retries: int = 5
+    user_message: str, models: list[str], api_url: str, max_retries: int = 5, attempt_cb=None
 ) -> dict:
     """Try each model in order; retry 429/5xx with exponential backoff.
 
     On 429 with Retry-After > _SWITCH_MODEL_THRESHOLD, or after max_retries,
     moves to the next model. Other 4xx errors are re-raised immediately.
     """
-    for model in models:
+    for model_idx, model in enumerate(models):
         for attempt in range(max_retries + 1):
+            if attempt_cb:
+                attempt_cb(model, model_idx + 1, len(models), attempt + 1)
             try:
                 return _call_api(user_message, model, api_url)
             except requests.exceptions.HTTPError as e:
@@ -342,6 +344,7 @@ def run_sync(
     track_ids: list[str] | None = None,
     fallback_models: list[str] | None = None,
     progress_cb=None,
+    attempt_cb=None,
 ) -> dict:
     """Tag tracks via OpenRouter using lyrics + audio features.
 
@@ -414,7 +417,7 @@ def run_sync(
         try:
             user_msg = _build_user_message(row, af_map.get(row.track_id))
             models = [model] + [m for m in (fallback_models or []) if m != model]
-            raw = _call_api_with_retry(user_msg, models, api_url)
+            raw = _call_api_with_retry(user_msg, models, api_url, attempt_cb=attempt_cb)
             tags, strays = _validate(raw)
             logger.info("Tagged %s → %s", track_label, tags)
             if strays:

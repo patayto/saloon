@@ -118,11 +118,11 @@ Re-tag the entire library (e.g. after a model or taxonomy upgrade):
 docker compose exec web .venv/bin/python manage.py compute_track_tags --force
 ```
 
-Or click **Generate Tags** / **Regenerate** in any track's detail modal.
+Or click **Generate Tags** / **Regenerate** in any track's detail modal — tag generation runs in the background and shows live inline progress (model being tried, model index, attempt number) while it works.
 
 Default model: `google/gemma-4-31b-it:free`. Override with `--model <model-id>` — run `--help` for a list of suggested free models. Any OpenRouter model slug is accepted.
 
-Free models can be rate-limited aggressively (sometimes one request per 10 minutes per model). Use `--retry` to automatically cycle through the built-in free model list as per-track fallbacks:
+Free models can be rate-limited aggressively (sometimes one request per 10 minutes per model). The UI automatically cycles through the full free model list as fallbacks on 429/5xx. Use `--retry` for the same behaviour in the CLI:
 
 ```bash
 docker compose exec web .venv/bin/python manage.py compute_track_tags --retry
