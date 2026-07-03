@@ -1,0 +1,23 @@
+{% extends "admin/change_list.html" %}
+
+{% block result_list %}
+{% if tag_summary %}
+<h2>Top suggestions (filter-aware)</h2>
+<table style="margin-bottom: 20px;">
+  <thead>
+    <tr><th>Axis</th><th>Tag</th><th>Occurrences</th><th>Avg score</th></tr>
+  </thead>
+  <tbody>
+    {% for row in tag_summary %}
+    <tr>
+      <td>{{ row.axis }}</td>
+      <td>{{ row.tag }}</td>
+      <td>{{ row.count }}</td>
+      <td>{{ row.avg_score|floatformat:2 }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{{ block.super }}
+{% endblock %}

@@ -84,7 +84,8 @@ docker compose exec web .venv/bin/python manage.py <command>
 | `sync_playlist_tracks <id>` | Per-playlist delta sync (adds/removes/reorders tracks) |
 | `compute_sentiment` | VADER sentiment backfill for tracks with lyrics |
 | `compute_lyric_embeddings` | Ollama lyric embedding backfill (requires Ollama running) |
-| `compute_track_tags` | LLM tag backfill via OpenRouter across five axes: mood, theme, scene, style, tempo feel (requires `OPENROUTER_API_KEY`); use `--retry` to cycle through free model fallbacks on 429/5xx |
+| `compute_track_tags` | LLM tag backfill via OpenRouter across five axes: mood, theme, scene, style, tempo feel (requires `OPENROUTER_API_KEY`); use `--retry` to cycle through free model fallbacks on 429/5xx; `--refresh-stale` to re-tag tracks tagged under an older vocabulary |
+| `backfill_promoted_tags` | Merge recorded out-of-vocabulary tag suggestions into existing track tags after a tag is promoted into the allowed list (no LLM calls) |
 
 ## OpenRouter (optional — track tags)
 
@@ -128,6 +129,20 @@ docker compose exec web .venv/bin/python manage.py compute_track_tags --retry
 ```
 
 On a 429, the command reads the `Retry-After` header and either waits (if ≤ 60 s) or switches to the next model immediately. 5xx errors use exponential backoff starting at 8 s, capped at 60 s.
+
+### Growing the tag vocabulary
+
+The model may propose tags outside the allowed vocabulary; these are recorded per track as suggestions instead of being applied. Audit them in the Django admin (`/admin/analysis/tagsuggestion/`) — the changelist shows a ranked axis/tag/occurrences summary. When a suggestion has appeared often enough, add it to the `ALLOWED` dict in `analysis/management/commands/compute_track_tags.py`, then:
+
+```bash
+# Instantly apply recorded suggestions of the newly allowed tag(s) — no LLM calls
+docker compose exec web .venv/bin/python manage.py backfill_promoted_tags
+
+# Optionally re-tag tracks still on the old vocabulary via the LLM
+docker compose exec web .venv/bin/python manage.py compute_track_tags --refresh-stale
+```
+
+Each tag row is stamped with a hash of the vocabulary it was generated under, so `--refresh-stale` only re-tags tracks whose vocabulary is out of date.
 
 ## Ollama (optional — lyric embeddings)
 

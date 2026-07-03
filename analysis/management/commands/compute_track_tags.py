@@ -1,12 +1,14 @@
+import hashlib
 import json
 import logging
 import os
+import re
 import time
 
 import requests
 from django.core.management.base import BaseCommand, CommandError
 
-from analysis.models import TrackTags
+from analysis.models import TagSuggestion, TrackTags
 from spotify.models import AudioFeatures, TrackLyrics
 from spotify.templatetags.spotify_extras import duration_ms, key_name
 
@@ -130,8 +132,19 @@ ALLOWED = {
     ),
 }
 
+# Fingerprint of the vocabulary; changes automatically whenever ALLOWED is edited.
+# TrackTags rows stamped with an older hash are "stale" (see --refresh-stale).
+VOCAB_HASH = hashlib.sha256(
+    ";".join(f"{a}:{t}" for a in sorted(ALLOWED) for t in sorted(ALLOWED[a])).encode()
+).hexdigest()[:12]
+
 TAG_SCORE_THRESHOLD = 0.6
 MAX_TAGS_PER_AXIS = 6
+
+# Out-of-vocabulary tags the model proposes: recorded as TagSuggestion rows for audit.
+SUGGESTION_MIN_SCORE = 0.5
+MAX_SUGGESTIONS_PER_AXIS = 3
+_SUGGESTION_RE = re.compile(r"^[a-z][a-z0-9]*(?:_[a-z0-9]+){0,2}$")  # ≤3 words, no sentences
 
 # Retry-After values above this (seconds) mean the model is heavily throttled;
 # switch to the next fallback instead of waiting.
@@ -140,10 +153,12 @@ _SWITCH_MODEL_THRESHOLD = 60
 _SYSTEM_PROMPT = (
     "You are a music analyst. Given a track's metadata, audio features, and lyrics, "
     "return a JSON object with exactly five keys: mood, theme, scene, style, tempo_feel. "
-    "Each value is an object mapping tags to a confidence score between 0 and 1. Choose "
-    "tags strictly from the allowed values below and include only tags that clearly apply "
-    "(confidence 0.5 or higher) — most tracks warrant 2–4 tags per axis. Score honestly; "
-    "do not pad. Return only the JSON object, nothing else.\n\n"
+    "Each value is an object mapping tags to a confidence score between 0 and 1. Prefer "
+    "tags from the allowed values below; if a clearly applicable tag is missing from an "
+    "axis, you may add up to 2 extra tags for that axis — a short lowercase snake_case "
+    "concept (e.g. vulnerability, slow_burn), never a sentence. Include only tags that "
+    "clearly apply (confidence 0.5 or higher) — most tracks warrant 2–4 tags per axis. "
+    "Score honestly; do not pad. Return only the JSON object, nothing else.\n\n"
     + "\n".join(f"{axis}: {', '.join(vals)}" for axis, vals in ALLOWED.items())
 )
 
@@ -230,12 +245,10 @@ def _call_api_with_retry(
             except requests.exceptions.HTTPError as e:
                 code = e.response.status_code
                 if code == 429:
-                    # scaling initial wait time to 8 seconds
-                    wait = min(2 ** (attempt + 3), 60)
+                    # scaling the initial wait time to 4 seconds
+                    wait = min(2 ** (attempt + 2), 60)
                     retry_after = int(e.response.headers.get("Retry-After", 0)) or wait
-                    logger.info(e)
-                    logger.info(e.response)
-                    logger.info(e.response.headers)
+
                     if retry_after > _SWITCH_MODEL_THRESHOLD or attempt == max_retries:
                         logger.warning(
                             "Model %s: 429 (Retry-After=%ds) — switching model",
@@ -276,29 +289,46 @@ def _call_api_with_retry(
     raise CommandError(f"All {len(models)} model(s) exhausted.")
 
 
-def _validate(raw: dict) -> dict:
-    """Keep known tags scoring ≥ threshold, top MAX_TAGS_PER_AXIS by score per axis.
+def _normalize(tag) -> str:
+    return re.sub(r"[\s\-]+", "_", str(tag).strip().lower())
 
-    Returns {axis: {tag: score}}; empty dict for missing/invalid axes.
+
+def _validate(raw: dict) -> tuple[dict, dict]:
+    """Split the model response into (tags, strays), each {axis: {tag: score}}.
+
+    tags: known tags scoring ≥ threshold, top MAX_TAGS_PER_AXIS by score per axis.
+    strays: out-of-vocabulary suggestions passing minimal hygiene, top
+    MAX_SUGGESTIONS_PER_AXIS by score per axis.
     """
     out = {}
+    strays = {}
     for axis, allowed in ALLOWED.items():
         vals = raw.get(axis)
         if not isinstance(vals, dict):
             out[axis] = {}
             continue
-        kept = sorted(
-            (
-                (tag, round(float(score), 2))
-                for tag, score in vals.items()
-                if tag in allowed
-                and isinstance(score, (int, float))
-                and score >= TAG_SCORE_THRESHOLD
-            ),
-            key=lambda ts: -ts[1],
-        )[:MAX_TAGS_PER_AXIS]
-        out[axis] = dict(kept)
-    return out
+        known = []
+        unknown = []
+        for tag, score in vals.items():
+            if not isinstance(score, (int, float)):
+                continue
+            tag = _normalize(tag)
+            score = round(float(score), 2)
+            if tag in allowed:
+                if score >= TAG_SCORE_THRESHOLD:
+                    known.append((tag, score))
+            elif (
+                score >= SUGGESTION_MIN_SCORE
+                and len(tag) <= 30
+                and _SUGGESTION_RE.fullmatch(tag)
+            ):
+                unknown.append((tag, score))
+        out[axis] = dict(sorted(known, key=lambda ts: -ts[1])[:MAX_TAGS_PER_AXIS])
+        if unknown:
+            strays[axis] = dict(
+                sorted(unknown, key=lambda ts: -ts[1])[:MAX_SUGGESTIONS_PER_AXIS]
+            )
+    return out, strays
 
 
 def _ping(model: str, base_url: str) -> None:
@@ -385,13 +415,23 @@ def run_sync(
             user_msg = _build_user_message(row, af_map.get(row.track_id))
             models = [model] + [m for m in (fallback_models or []) if m != model]
             raw = _call_api_with_retry(user_msg, models, api_url)
-            tags = _validate(raw)
+            tags, strays = _validate(raw)
             logger.info("Tagged %s → %s", track_label, tags)
+            if strays:
+                logger.info("Suggestions from %s → %s", track_label, strays)
             TrackTags.objects.update_or_create(
                 track_id=row.track_id,
                 model_name=model,
-                defaults={"tags": tags},
+                defaults={"tags": tags, "vocab_hash": VOCAB_HASH},
             )
+            for axis, sugg in strays.items():
+                for tag, score in sugg.items():
+                    TagSuggestion.objects.update_or_create(
+                        track_id=row.track_id,
+                        axis=axis,
+                        tag=tag,
+                        defaults={"score": score, "model_name": model},
+                    )
             saved += 1
         except Exception:
             logger.exception("Failed to tag %s", track_label)
@@ -443,6 +483,12 @@ class Command(BaseCommand):
             "(library-wide unless --track-id is given).",
         )
         parser.add_argument(
+            "--refresh-stale",
+            action="store_true",
+            help="Re-tag tracks whose tags were computed under an older vocabulary "
+            "(vocab_hash mismatch). Useful after editing ALLOWED.",
+        )
+        parser.add_argument(
             "--retry",
             action="store_true",
             default=False,
@@ -459,16 +505,30 @@ class Command(BaseCommand):
         track_id = options["track_id"]
         force = options["force"]
         retry = options["retry"]
+        refresh_stale = options["refresh_stale"]
 
         track_ids = [track_id] if track_id else None
 
         if force:
             stale = TrackTags.objects.filter(model_name=model)
+            suggestions = TagSuggestion.objects.filter(model_name=model)
+            if track_ids:
+                stale = stale.filter(track_id__in=track_ids)
+                suggestions = suggestions.filter(track_id__in=track_ids)
+            deleted, _ = stale.delete()
+            suggestions.delete()
+            if deleted:
+                self.stdout.write(f"Cleared {deleted} existing tag row(s) (--force).")
+        elif refresh_stale:
+            stale = TrackTags.objects.filter(model_name=model).exclude(
+                vocab_hash=VOCAB_HASH
+            )
             if track_ids:
                 stale = stale.filter(track_id__in=track_ids)
             deleted, _ = stale.delete()
-            if deleted:
-                self.stdout.write(f"Cleared {deleted} existing tag row(s) (--force).")
+            self.stdout.write(
+                f"Cleared {deleted} stale tag row(s) (--refresh-stale, vocab {VOCAB_HASH})."
+            )
 
         if track_ids:
             self.stdout.write(

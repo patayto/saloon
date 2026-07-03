@@ -57,6 +57,7 @@ class TrackTags(models.Model):
     )
     model_name = models.CharField(max_length=128)
     tags = models.JSONField()  # {"mood": [...], "theme": [...], "scene": [...]}
+    vocab_hash = models.CharField(max_length=12, blank=True, default="")  # "" = stale (pre-vocab-tracking)
     computed_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -64,6 +65,23 @@ class TrackTags(models.Model):
 
     def __str__(self):
         return f"TrackTags({self.track_id}, {self.model_name})"
+
+
+class TagSuggestion(models.Model):
+    track = models.ForeignKey(
+        "spotify.Track", on_delete=models.CASCADE, related_name="tag_suggestions"
+    )
+    axis = models.CharField(max_length=32)
+    tag = models.CharField(max_length=64)  # normalized: lowercase snake_case
+    score = models.FloatField()
+    model_name = models.CharField(max_length=128)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [("track", "axis", "tag")]
+
+    def __str__(self):
+        return f"TagSuggestion({self.track_id}, {self.axis}:{self.tag}, {self.score})"
 
 
 class MashupPair(models.Model):
