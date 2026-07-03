@@ -84,7 +84,7 @@ docker compose exec web .venv/bin/python manage.py <command>
 | `sync_playlist_tracks <id>` | Per-playlist delta sync (adds/removes/reorders tracks) |
 | `compute_sentiment` | VADER sentiment backfill for tracks with lyrics |
 | `compute_lyric_embeddings` | Ollama lyric embedding backfill (requires Ollama running) |
-| `compute_track_tags` | LLM tag backfill via OpenRouter across five axes: mood, theme, scene, style, tempo feel (requires `OPENROUTER_API_KEY`) |
+| `compute_track_tags` | LLM tag backfill via OpenRouter across five axes: mood, theme, scene, style, tempo feel (requires `OPENROUTER_API_KEY`); use `--retry` to cycle through free model fallbacks on 429/5xx |
 
 ## OpenRouter (optional — track tags)
 
@@ -119,7 +119,15 @@ docker compose exec web .venv/bin/python manage.py compute_track_tags --force
 
 Or click **Generate Tags** / **Regenerate** in any track's detail modal.
 
-Default model: `nvidia/nemotron-3-ultra-550b-a55b:free`. Override with `--model <model-id>` — run `--help` for a list of suggested free models. Any OpenRouter model slug is accepted.
+Default model: `google/gemma-4-31b-it:free`. Override with `--model <model-id>` — run `--help` for a list of suggested free models. Any OpenRouter model slug is accepted.
+
+Free models can be rate-limited aggressively (sometimes one request per 10 minutes per model). Use `--retry` to automatically cycle through the built-in free model list as per-track fallbacks:
+
+```bash
+docker compose exec web .venv/bin/python manage.py compute_track_tags --retry
+```
+
+On a 429, the command reads the `Retry-After` header and either waits (if ≤ 60 s) or switches to the next model immediately. 5xx errors use exponential backoff starting at 8 s, capped at 60 s.
 
 ## Ollama (optional — lyric embeddings)
 

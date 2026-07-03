@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import time
 
 import requests
 from django.core.management.base import BaseCommand, CommandError
@@ -11,7 +12,18 @@ from spotify.templatetags.spotify_extras import duration_ms, key_name
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
+FREE_MODELS = [
+    "google/gemma-4-31b-it:free",
+    "google/gemma-4-26b-a4b-it:free",
+    "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "nvidia/nemotron-3-super-120b-a12b:free",
+    "nvidia/nemotron-3-nano-30b-a3b:free",
+    "poolside/laguna-xs-2.1:free",
+    "poolside/laguna-m.1:free",
+    "openai/gpt-oss-120b:free",
+    "openai/gpt-oss-20b:free",
+]
+DEFAULT_MODEL = FREE_MODELS[0]
 DEFAULT_API_URL = "https://openrouter.ai/api/v1"
 _API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 
@@ -121,6 +133,10 @@ ALLOWED = {
 TAG_SCORE_THRESHOLD = 0.6
 MAX_TAGS_PER_AXIS = 6
 
+# Retry-After values above this (seconds) mean the model is heavily throttled;
+# switch to the next fallback instead of waiting.
+_SWITCH_MODEL_THRESHOLD = 60
+
 _SYSTEM_PROMPT = (
     "You are a music analyst. Given a track's metadata, audio features, and lyrics, "
     "return a JSON object with exactly five keys: mood, theme, scene, style, tempo_feel. "
@@ -199,6 +215,67 @@ def _call_api(user_message: str, model: str, api_url: str) -> dict:
         raise ke
 
 
+def _call_api_with_retry(
+    user_message: str, models: list[str], api_url: str, max_retries: int = 5
+) -> dict:
+    """Try each model in order; retry 429/5xx with exponential backoff.
+
+    On 429 with Retry-After > _SWITCH_MODEL_THRESHOLD, or after max_retries,
+    moves to the next model. Other 4xx errors are re-raised immediately.
+    """
+    for model in models:
+        for attempt in range(max_retries + 1):
+            try:
+                return _call_api(user_message, model, api_url)
+            except requests.exceptions.HTTPError as e:
+                code = e.response.status_code
+                if code == 429:
+                    # scaling initial wait time to 8 seconds
+                    wait = min(2 ** (attempt + 3), 60)
+                    retry_after = int(e.response.headers.get("Retry-After", 0)) or wait
+                    logger.info(e)
+                    logger.info(e.response)
+                    logger.info(e.response.headers)
+                    if retry_after > _SWITCH_MODEL_THRESHOLD or attempt == max_retries:
+                        logger.warning(
+                            "Model %s: 429 (Retry-After=%ds) — switching model",
+                            model,
+                            retry_after,
+                        )
+                        break  # try next model
+
+                    logger.warning(
+                        "Model %s: 429, retrying in %ds (attempt %d/%d)",
+                        model,
+                        retry_after,
+                        attempt + 1,
+                        max_retries,
+                    )
+                    time.sleep(wait)
+                elif 500 <= code < 600:
+                    if attempt == max_retries:
+                        logger.warning(
+                            "Model %s: %d after %d retries — switching model",
+                            model,
+                            code,
+                            max_retries,
+                        )
+                        break
+                    wait = min(2**attempt, 60)
+                    logger.warning(
+                        "Model %s: %d, retrying in %ds (attempt %d/%d)",
+                        model,
+                        code,
+                        wait,
+                        attempt + 1,
+                        max_retries,
+                    )
+                    time.sleep(wait)
+                else:
+                    raise
+    raise CommandError(f"All {len(models)} model(s) exhausted.")
+
+
 def _validate(raw: dict) -> dict:
     """Keep known tags scoring ≥ threshold, top MAX_TAGS_PER_AXIS by score per axis.
 
@@ -233,13 +310,14 @@ def run_sync(
     model: str = DEFAULT_MODEL,
     api_url: str = DEFAULT_API_URL,
     track_ids: list[str] | None = None,
+    fallback_models: list[str] | None = None,
     progress_cb=None,
 ) -> dict:
-    """Tag tracks via Ollama using lyrics + audio features.
+    """Tag tracks via OpenRouter using lyrics + audio features.
 
     Skips tracks already tagged for this model_name, instrumental tracks,
-    and tracks with no lyrics. On per-track parse failures, increments errors
-    and continues.
+    and tracks with no lyrics. On per-track failures, increments errors and
+    continues. With fallback_models, cycles through them per-track on 429/5xx.
 
     Returns: {"model", "saved", "skipped_existing", "skipped_no_lyrics", "errors"}
     """
@@ -305,7 +383,8 @@ def run_sync(
         logger.info("Tagging %s", track_label)
         try:
             user_msg = _build_user_message(row, af_map.get(row.track_id))
-            raw = _call_api(user_msg, model, api_url)
+            models = [model] + [m for m in (fallback_models or []) if m != model]
+            raw = _call_api_with_retry(user_msg, models, api_url)
             tags = _validate(raw)
             logger.info("Tagged %s → %s", track_label, tags)
             TrackTags.objects.update_or_create(
@@ -342,15 +421,7 @@ class Command(BaseCommand):
             help=(
                 f"Model to use via OpenRouter (default: {DEFAULT_MODEL}). "
                 "Suggested free models: "
-                "google/gemma-4-31b-it:free, "
-                "google/gemma-4-26b-a4b-it:free, "
-                "nvidia/nemotron-3-ultra-550b-a55b:free, "
-                "nvidia/nemotron-3-super-120b-a12b:free, "
-                "nvidia/nemotron-3-nano-30b-a3b:free, "
-                "poolside/laguna-xs-2.1:free, "
-                "poolside/laguna-m.1:free, "
-                "openai/gpt-oss-120b:free, "
-                "openai/gpt-oss-20b:free. "
+                f"{', '.join(FREE_MODELS)}"
                 "Any OpenRouter model slug is accepted."
             ),
         )
@@ -371,12 +442,23 @@ class Command(BaseCommand):
             help="Re-tag even if tag rows already exist for this model "
             "(library-wide unless --track-id is given).",
         )
+        parser.add_argument(
+            "--retry",
+            action="store_true",
+            default=False,
+            help=(
+                "On 429/5xx, cycle through FREE_MODELS as per-track fallbacks. "
+                "Uses exponential backoff; switches model when Retry-After "
+                f"exceeds {_SWITCH_MODEL_THRESHOLD}s or retries are exhausted."
+            ),
+        )
 
     def handle(self, *args, **options):
         model = options["model"]
         api_url = options["api_url"]
         track_id = options["track_id"]
         force = options["force"]
+        retry = options["retry"]
 
         track_ids = [track_id] if track_id else None
 
@@ -417,7 +499,11 @@ class Command(BaseCommand):
             print(f"\r  [{bar}] {pct:3d}%  {done}/{total}", end="", flush=True)
 
         stats = run_sync(
-            model=model, api_url=api_url, track_ids=track_ids, progress_cb=_progress
+            model=model,
+            api_url=api_url,
+            track_ids=track_ids,
+            fallback_models=FREE_MODELS if retry else None,
+            progress_cb=_progress,
         )
         print()
 
