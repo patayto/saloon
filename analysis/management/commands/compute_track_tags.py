@@ -7,6 +7,7 @@ from django.core.management.base import BaseCommand, CommandError
 
 from analysis.models import TrackTags
 from spotify.models import AudioFeatures, TrackLyrics
+from spotify.templatetags.spotify_extras import duration_ms, key_name
 
 logger = logging.getLogger(__name__)
 
@@ -14,8 +15,9 @@ DEFAULT_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
 DEFAULT_API_URL = "https://openrouter.ai/api/v1"
 _API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 
+# Insertion order = display order (mood → tempo_feel) throughout the app.
 ALLOWED = {
-    "mood": {
+    "mood": (
         "melancholic",
         "euphoric",
         "nostalgic",
@@ -29,8 +31,19 @@ ALLOWED = {
         "playful",
         "dark",
         "uplifting",
-    },
-    "theme": {
+        "tender",
+        "brooding",
+        "yearning",
+        "triumphant",
+        "sensual",
+        "wistful",
+        "menacing",
+        "carefree",
+        "desperate",
+        "dreamy",
+        "cathartic",
+    ),
+    "theme": (
         "love",
         "loss",
         "identity",
@@ -44,8 +57,22 @@ ALLOWED = {
         "resilience",
         "loneliness",
         "political",
-    },
-    "scene": {
+        "ambition",
+        "fame",
+        "freedom",
+        "growing_up",
+        "memory",
+        "death",
+        "faith_and_doubt",
+        "betrayal",
+        "desire",
+        "home",
+        "self_destruction",
+        "empowerment",
+        "jealousy",
+        "forgiveness",
+    ),
+    "scene": (
         "late_night",
         "road_trip",
         "workout",
@@ -54,37 +81,57 @@ ALLOWED = {
         "morning",
         "introspection",
         "summer",
-    },
+        "rainy_day",
+        "club",
+        "house_party",
+        "study_focus",
+        "winter",
+        "slow_dance",
+        "breakup_recovery",
+        "sunset",
+    ),
+    "style": (
+        "storytelling",
+        "confessional",
+        "anthemic",
+        "poetic",
+        "witty",
+        "raw",
+        "abstract",
+        "conversational",
+        "cinematic",
+        "minimalist",
+        "wordplay",
+        "spoken_word",
+    ),
+    "tempo_feel": (
+        "driving",
+        "floaty",
+        "swaying",
+        "head_nod",
+        "frantic",
+        "laid_back",
+        "pulsing",
+        "bouncy",
+        "hypnotic",
+        "explosive",
+    ),
 }
 
+TAG_SCORE_THRESHOLD = 0.6
+MAX_TAGS_PER_AXIS = 6
+
 _SYSTEM_PROMPT = (
-    "You are a music analyst. Given a track's metadata and lyrics, return a JSON object "
-    "with exactly three keys: mood, theme, scene. Each value is a list of 1–3 tags chosen "
-    "strictly from the allowed values below. Return only the JSON object, nothing else.\n\n"
-    "mood: melancholic, euphoric, nostalgic, defiant, peaceful, anxious, romantic, angry, "
-    "hopeful, bittersweet, playful, dark, uplifting\n"
-    "theme: love, loss, identity, social_commentary, relationships, nature, party, "
-    "spirituality, family, escapism, resilience, loneliness, political\n"
-    "scene: late_night, road_trip, workout, heartbreak, celebration, morning, introspection, summer"
+    "You are a music analyst. Given a track's metadata, audio features, and lyrics, "
+    "return a JSON object with exactly five keys: mood, theme, scene, style, tempo_feel. "
+    "Each value is an object mapping tags to a confidence score between 0 and 1. Choose "
+    "tags strictly from the allowed values below and include only tags that clearly apply "
+    "(confidence 0.5 or higher) — most tracks warrant 2–4 tags per axis. Score honestly; "
+    "do not pad. Return only the JSON object, nothing else.\n\n"
+    + "\n".join(f"{axis}: {', '.join(vals)}" for axis, vals in ALLOWED.items())
 )
 
 _LYRICS_LIMIT = 2000
-
-
-def _energy_label(v: float) -> str:
-    if v >= 0.7:
-        return "high"
-    if v >= 0.4:
-        return "medium"
-    return "low"
-
-
-def _valence_label(v: float) -> str:
-    if v >= 0.6:
-        return "positive"
-    if v >= 0.35:
-        return "neutral"
-    return "negative"
 
 
 def _build_user_message(lyrics_row, af: AudioFeatures | None) -> str:
@@ -96,14 +143,22 @@ def _build_user_message(lyrics_row, af: AudioFeatures | None) -> str:
     genres = list(dict.fromkeys(genres))[:5]  # dedupe, cap at 5
 
     parts = [f"Track: '{track.name}' by {artists}"]
+    if track.album:
+        year = (track.album.release_date or "")[:4]
+        parts.append(f"Album: '{track.album.name}'" + (f" ({year})" if year else ""))
+    parts.append(f"Duration: {duration_ms(track.duration_ms)}")
     if genres:
         parts.append(f"Genres: {', '.join(genres)}")
     if af:
+        mode = "major" if af.mode else "minor"
         parts.append(
-            f"Energy: {af.energy:.2f} ({_energy_label(af.energy)}), "
-            f"Valence: {af.valence:.2f} ({_valence_label(af.valence)}), "
-            f"Tempo: {af.tempo:.0f} BPM, "
-            f"Danceability: {af.danceability:.2f}"
+            "Audio features (0–1 unless noted): "
+            f"energy {af.energy:.2f}, valence {af.valence:.2f}, "
+            f"danceability {af.danceability:.2f}, acousticness {af.acousticness:.2f}, "
+            f"instrumentalness {af.instrumentalness:.2f}, speechiness {af.speechiness:.2f}, "
+            f"liveness {af.liveness:.2f}, tempo {af.tempo:.0f} BPM, "
+            f"loudness {af.loudness:.1f} dB, key {key_name(af.key)} {mode}, "
+            f"time signature {af.time_signature}/4"
         )
     lyrics = (lyrics_row.plain_lyrics or "").strip()
     if lyrics:
@@ -145,11 +200,28 @@ def _call_api(user_message: str, model: str, api_url: str) -> dict:
 
 
 def _validate(raw: dict) -> dict:
-    """Keep only known tag values; return empty list for missing/invalid axes."""
-    return {
-        axis: [v for v in raw.get(axis, []) if v in allowed]
-        for axis, allowed in ALLOWED.items()
-    }
+    """Keep known tags scoring ≥ threshold, top MAX_TAGS_PER_AXIS by score per axis.
+
+    Returns {axis: {tag: score}}; empty dict for missing/invalid axes.
+    """
+    out = {}
+    for axis, allowed in ALLOWED.items():
+        vals = raw.get(axis)
+        if not isinstance(vals, dict):
+            out[axis] = {}
+            continue
+        kept = sorted(
+            (
+                (tag, round(float(score), 2))
+                for tag, score in vals.items()
+                if tag in allowed
+                and isinstance(score, (int, float))
+                and score >= TAG_SCORE_THRESHOLD
+            ),
+            key=lambda ts: -ts[1],
+        )[:MAX_TAGS_PER_AXIS]
+        out[axis] = dict(kept)
+    return out
 
 
 def _ping(model: str, base_url: str) -> None:
@@ -223,9 +295,10 @@ def run_sync(
         for af in AudioFeatures.objects.filter(track_id__in=[r.track_id for r in rows])
     }
 
-    logger.info("Pinging Ollama at %s with model %s", api_url, model)
-    _ping(model, api_url)
-    logger.info("Ollama ping OK")
+    logger.info("Skipping Openrouter ping")
+    # logger.info("Pinging Openrouter at %s with model %s", api_url, model)
+    # _ping(model, api_url)
+    # logger.info("Openrouter ping OK")
 
     for row in rows:
         track_label = f"{row.track.name!r} ({row.track_id})"
@@ -234,13 +307,7 @@ def run_sync(
             user_msg = _build_user_message(row, af_map.get(row.track_id))
             raw = _call_api(user_msg, model, api_url)
             tags = _validate(raw)
-            logger.info(
-                "Tagged %s → mood=%s theme=%s scene=%s",
-                track_label,
-                tags.get("mood"),
-                tags.get("theme"),
-                tags.get("scene"),
-            )
+            logger.info("Tagged %s → %s", track_label, tags)
             TrackTags.objects.update_or_create(
                 track_id=row.track_id,
                 model_name=model,
@@ -272,7 +339,20 @@ class Command(BaseCommand):
         parser.add_argument(
             "--model",
             default=DEFAULT_MODEL,
-            help=f"Ollama model to use (default: {DEFAULT_MODEL})",
+            help=(
+                f"Model to use via OpenRouter (default: {DEFAULT_MODEL}). "
+                "Suggested free models: "
+                "google/gemma-4-31b-it:free, "
+                "google/gemma-4-26b-a4b-it:free, "
+                "nvidia/nemotron-3-ultra-550b-a55b:free, "
+                "nvidia/nemotron-3-super-120b-a12b:free, "
+                "nvidia/nemotron-3-nano-30b-a3b:free, "
+                "poolside/laguna-xs-2.1:free, "
+                "poolside/laguna-m.1:free, "
+                "openai/gpt-oss-120b:free, "
+                "openai/gpt-oss-20b:free. "
+                "Any OpenRouter model slug is accepted."
+            ),
         )
         parser.add_argument(
             "--api-url",
@@ -288,7 +368,8 @@ class Command(BaseCommand):
         parser.add_argument(
             "--force",
             action="store_true",
-            help="Re-tag even if a tag row already exists for this model.",
+            help="Re-tag even if tag rows already exist for this model "
+            "(library-wide unless --track-id is given).",
         )
 
     def handle(self, *args, **options):
@@ -299,10 +380,11 @@ class Command(BaseCommand):
 
         track_ids = [track_id] if track_id else None
 
-        if force and track_ids:
-            deleted, _ = TrackTags.objects.filter(
-                track_id__in=track_ids, model_name=model
-            ).delete()
+        if force:
+            stale = TrackTags.objects.filter(model_name=model)
+            if track_ids:
+                stale = stale.filter(track_id__in=track_ids)
+            deleted, _ = stale.delete()
             if deleted:
                 self.stdout.write(f"Cleared {deleted} existing tag row(s) (--force).")
 

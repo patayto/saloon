@@ -11,7 +11,10 @@ A personal Spotify library browser and analyser.
 - Mashup partner suggestions (KNN over audio features + lyric embeddings)
 - Mashup tab: compare any two library tracks side by side with a compatibility score (0–100), per-feature diffs, and hover notes based on harmonic rules
 - Background sync jobs with live progress panel in the UI
-- LLM-generated mood / theme / scene tags per track (via OpenRouter)
+- LLM-generated tags per track across five axes — mood, theme, scene, style, and tempo feel — with confidence scores (via OpenRouter)
+- Filter the library by any tag (e.g. mood:melancholic)
+- Graph view: group nodes by tag axis to form clusters, or filter to a single tag value
+- Mashup view: overlapping tags highlighted in the compatibility column
 
 ## Requirements
 
@@ -81,11 +84,23 @@ docker compose exec web .venv/bin/python manage.py <command>
 | `sync_playlist_tracks <id>` | Per-playlist delta sync (adds/removes/reorders tracks) |
 | `compute_sentiment` | VADER sentiment backfill for tracks with lyrics |
 | `compute_lyric_embeddings` | Ollama lyric embedding backfill (requires Ollama running) |
-| `compute_track_tags` | LLM mood/theme/scene tag backfill via OpenRouter (requires `OPENROUTER_API_KEY`) |
+| `compute_track_tags` | LLM tag backfill via OpenRouter across five axes: mood, theme, scene, style, tempo feel (requires `OPENROUTER_API_KEY`) |
 
 ## OpenRouter (optional — track tags)
 
-Mood, theme, and scene tags appear in the track detail modal. Requires a free [OpenRouter](https://openrouter.ai/) account:
+Tags are generated across five axes per track and stored with per-tag confidence scores:
+
+| Axis | What it captures |
+|---|---|
+| **mood** | Emotional tone — melancholic, euphoric, yearning, triumphant, etc. |
+| **theme** | Subject matter — love, loss, identity, political, memory, etc. |
+| **scene** | Listening context — late_night, road_trip, study_focus, slow_dance, etc. |
+| **style** | Lyrical/vocal delivery — storytelling, confessional, anthemic, poetic, etc. |
+| **tempo_feel** | Perceived motion — driving, swaying, laid_back, hypnotic, etc. |
+
+Tags appear in the track detail modal, are filterable in the Library tab (tag dropdown next to the search box), drive group-by clustering and per-tag filtering in the Graph tab, and show overlapping tags in the Mashup compatibility column.
+
+Requires a free [OpenRouter](https://openrouter.ai/) account:
 
 1. Create an API key at [openrouter.ai/keys](https://openrouter.ai/keys)
 2. Add `OPENROUTER_API_KEY=<your-key>` to `.env`
@@ -96,7 +111,15 @@ Bulk backfill (skips tracks already tagged):
 docker compose exec web .venv/bin/python manage.py compute_track_tags
 ```
 
-Or click **Generate Tags** in any track's detail modal. Default model: `nvidia/nemotron-3-ultra-550b-a55b:free`. Override with `--model <model-id>`.
+Re-tag the entire library (e.g. after a model or taxonomy upgrade):
+
+```bash
+docker compose exec web .venv/bin/python manage.py compute_track_tags --force
+```
+
+Or click **Generate Tags** / **Regenerate** in any track's detail modal.
+
+Default model: `nvidia/nemotron-3-ultra-550b-a55b:free`. Override with `--model <model-id>` — run `--help` for a list of suggested free models. Any OpenRouter model slug is accepted.
 
 ## Ollama (optional — lyric embeddings)
 

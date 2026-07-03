@@ -32,6 +32,15 @@ def in_set(value, container):
 
 
 @register.filter
+def sort_tags(tag_scores):
+    """Sort a {tag: score} dict into (tag, score) pairs, highest score first."""
+    try:
+        return sorted(tag_scores.items(), key=lambda kv: -kv[1])
+    except (AttributeError, TypeError):
+        return []
+
+
+@register.filter
 def to_pct(value):
     """Convert 0-1 float to integer percentage string for use in inline styles."""
     try:

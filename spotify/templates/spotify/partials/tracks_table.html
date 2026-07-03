@@ -8,8 +8,10 @@ currently displayed — so subsequent filter keystrokes preserve the sort state.
   (function() {
     var s = document.getElementById('sort-field');
     var d = document.getElementById('dir-field');
+    var t = document.getElementById('tag-select');
     if (s) s.value = '{{ sort }}';
     if (d) d.value = '{{ dir }}';
+    if (t) t.value = '{{ tag|escapejs }}';
   })();
 </script>
 
@@ -22,7 +24,7 @@ currently displayed — so subsequent filter keystrokes preserve the sort state.
         <!-- Added -->
         <th class="px-4 py-3 text-left font-medium">
           <a
-            hx-get="{% url 'tracks_table' %}?sort=added_at&dir={{ sort_dirs.added_at }}&q={{ q|urlencode }}&page=1"
+            hx-get="{% url 'tracks_table' %}?sort=added_at&dir={{ sort_dirs.added_at }}&q={{ q|urlencode }}&tag={{ tag|urlencode }}&page=1"
             hx-target="#tracks-table"
             hx-push-url="true"
             class="inline-flex items-center gap-1 hover:text-white cursor-pointer select-none"
@@ -39,7 +41,7 @@ currently displayed — so subsequent filter keystrokes preserve the sort state.
         <!-- Title -->
         <th class="px-4 py-3 text-left font-medium">
           <a
-            hx-get="{% url 'tracks_table' %}?sort=title&dir={{ sort_dirs.title }}&q={{ q|urlencode }}&page=1"
+            hx-get="{% url 'tracks_table' %}?sort=title&dir={{ sort_dirs.title }}&q={{ q|urlencode }}&tag={{ tag|urlencode }}&page=1"
             hx-target="#tracks-table"
             hx-push-url="true"
             class="inline-flex items-center gap-1 hover:text-white cursor-pointer select-none"
@@ -59,7 +61,7 @@ currently displayed — so subsequent filter keystrokes preserve the sort state.
         <!-- Album -->
         <th class="px-4 py-3 text-left font-medium">
           <a
-            hx-get="{% url 'tracks_table' %}?sort=album&dir={{ sort_dirs.album }}&q={{ q|urlencode }}&page=1"
+            hx-get="{% url 'tracks_table' %}?sort=album&dir={{ sort_dirs.album }}&q={{ q|urlencode }}&tag={{ tag|urlencode }}&page=1"
             hx-target="#tracks-table"
             hx-push-url="true"
             class="inline-flex items-center gap-1 hover:text-white cursor-pointer select-none"
@@ -76,7 +78,7 @@ currently displayed — so subsequent filter keystrokes preserve the sort state.
         <!-- Duration -->
         <th class="px-4 py-3 text-right font-medium">
           <a
-            hx-get="{% url 'tracks_table' %}?sort=duration&dir={{ sort_dirs.duration }}&q={{ q|urlencode }}&page=1"
+            hx-get="{% url 'tracks_table' %}?sort=duration&dir={{ sort_dirs.duration }}&q={{ q|urlencode }}&tag={{ tag|urlencode }}&page=1"
             hx-target="#tracks-table"
             hx-push-url="true"
             class="inline-flex items-center gap-1 justify-end hover:text-white cursor-pointer select-none"
@@ -172,7 +174,7 @@ currently displayed — so subsequent filter keystrokes preserve the sort state.
   <div class="flex gap-2">
     {% if page.has_previous %}
     <a
-      hx-get="{% url 'tracks_table' %}?page={{ page.previous_page_number }}&sort={{ sort }}&dir={{ dir }}&q={{ q|urlencode }}"
+      hx-get="{% url 'tracks_table' %}?page={{ page.previous_page_number }}&sort={{ sort }}&dir={{ dir }}&q={{ q|urlencode }}&tag={{ tag|urlencode }}"
       hx-target="#tracks-table"
       hx-push-url="true"
       class="px-3 py-1 rounded bg-gray-800 hover:bg-gray-700 cursor-pointer transition-colors"
@@ -183,7 +185,7 @@ currently displayed — so subsequent filter keystrokes preserve the sort state.
 
     {% if page.has_next %}
     <a
-      hx-get="{% url 'tracks_table' %}?page={{ page.next_page_number }}&sort={{ sort }}&dir={{ dir }}&q={{ q|urlencode }}"
+      hx-get="{% url 'tracks_table' %}?page={{ page.next_page_number }}&sort={{ sort }}&dir={{ dir }}&q={{ q|urlencode }}&tag={{ tag|urlencode }}"
       hx-target="#tracks-table"
       hx-push-url="true"
       class="px-3 py-1 rounded bg-gray-800 hover:bg-gray-700 cursor-pointer transition-colors"

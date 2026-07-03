@@ -24,6 +24,20 @@
 
     <div class="flex items-center gap-3 ml-auto">
       <select
+        id="graph-group-by"
+        onchange="setGroupAxis(this.value)"
+        class="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-green-500"
+      >
+        <option value="">No grouping</option>
+      </select>
+      <select
+        id="graph-tag-filter"
+        onchange="setTagFilter(this.value)"
+        class="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-green-500"
+      >
+        <option value="">All tags</option>
+      </select>
+      <select
         id="graph-color-mode"
         onchange="setColorMode(this.value)"
         class="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-green-500"
@@ -56,6 +70,8 @@
   var TYPE_COLORS = ['#38bdf8', '#818cf8', '#f472b6', '#fbbf24']; // lyric, audio, playlist, artist
   var typeEnabled = [true, true, true, true];
   var graphColorMode = 'none';
+  var groupAxis = '';      // '' = no tag clustering
+  var tagFilter = null;    // {axis, value} or null
   var isolated = null; // {id: nodeId, neighbors: Set} or null
   var GRAPH = null, G_NODES = [], G_LINKS = [];
 
@@ -71,6 +87,16 @@
   function initGraph(data) {
     G_NODES = data.nodes;
     G_LINKS = data.links.map(function(l) { return {source: l[0], target: l[1], type: l[2], w: l[3]}; });
+
+    var groupSel = document.getElementById('graph-group-by');
+    var filterSel = document.getElementById('graph-tag-filter');
+    Object.keys(data.tag_axes || {}).forEach(function(axis) {
+      groupSel.add(new Option('Group by ' + axis.replace('_', ' '), axis));
+      var og = document.createElement('optgroup');
+      og.label = axis.replace('_', ' ');
+      data.tag_axes[axis].forEach(function(t) { og.appendChild(new Option(t, axis + ':' + t)); });
+      filterSel.appendChild(og);
+    });
 
     var el = document.getElementById('graph-canvas');
     el.innerHTML = '';
@@ -98,11 +124,32 @@
   function applyGraphFilters() {
     isolated = null;
     var links = G_LINKS.filter(function(l) { return typeEnabled[l.type]; });
+    var nodes = G_NODES;
     G_NODES.forEach(function(n) { n.deg = 0; });
     links.forEach(function(l) { G_NODES[nid(l.source)].deg++; G_NODES[nid(l.target)].deg++; });
-    GRAPH.graphData({nodes: G_NODES, links: links});
+    var edgeCount = links.length;
+
+    if (groupAxis) {
+      // Hub-node clustering: one anchor node per tag; near-invisible links pull members together
+      var anchors = {};
+      nodes = G_NODES.slice();
+      links = links.slice();
+      G_NODES.forEach(function(n) {
+        var tags = (n.tags || {})[groupAxis] || {};
+        Object.keys(tags).forEach(function(t) {
+          if (!anchors[t]) {
+            anchors[t] = {id: 'tag:' + t, anchor: true, name: t, artist: groupAxis, deg: 0};
+            nodes.push(anchors[t]);
+          }
+          anchors[t].deg++;
+          links.push({source: n.id, target: anchors[t].id, type: -1, w: tags[t]});
+        });
+      });
+    }
+
+    GRAPH.graphData({nodes: nodes, links: links});
     document.getElementById('graph-edge-count').textContent =
-      G_NODES.length + ' tracks · ' + links.length + ' connections';
+      G_NODES.length + ' tracks · ' + edgeCount + ' connections';
   }
 
   function toggleType(typeIdx, on) {
@@ -110,14 +157,35 @@
     if (GRAPH) applyGraphFilters();
   }
 
+  function topTag(n, axis) {
+    var tags = (n.tags || {})[axis];
+    if (!tags) return null;
+    var best = null;
+    Object.keys(tags).forEach(function(t) { if (best === null || tags[t] > tags[best]) best = t; });
+    return best;
+  }
+
+  function tagHue(t) {
+    var h = 0;
+    for (var i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) % 360;
+    return h;
+  }
+
   function nodeColor(n) {
+    if (n.anchor) return 'hsla(' + tagHue(n.name) + ', 65%, 55%, 0.35)';
     if (isolated && n.id !== isolated.id && !isolated.neighbors.has(n.id)) return 'rgba(107,114,128,0.12)';
+    if (tagFilter && !((n.tags || {})[tagFilter.axis] || {})[tagFilter.value]) return 'rgba(107,114,128,0.12)';
+    if (groupAxis) {
+      var t = topTag(n, groupAxis);
+      return t ? 'hsl(' + tagHue(t) + ', 65%, 55%)' : '#4b5563';
+    }
     if (graphColorMode === 'none' || n[graphColorMode] == null) return '#9ca3af';
     var v = graphColorMode === 'sentiment' ? (n[graphColorMode] + 1) / 2 : n[graphColorMode];
     return 'hsl(' + Math.round(v * 120) + ', 70%, 55%)'; // red → green
   }
 
   function linkColor(l) {
+    if (l.type < 0) return 'rgba(107,114,128,0.05)'; // anchor links: near-invisible
     if (isolated) {
       var touches = nid(l.source) === isolated.id || nid(l.target) === isolated.id;
       return touches ? TYPE_COLORS[l.type] : 'rgba(107,114,128,0.04)';
@@ -162,6 +230,21 @@
 
   function setColorMode(mode) {
     graphColorMode = mode;
+    if (GRAPH) repaint();
+  }
+
+  function setGroupAxis(axis) {
+    groupAxis = axis;
+    if (GRAPH) applyGraphFilters(); // rebuilds data → reheats so clusters form
+  }
+
+  function setTagFilter(val) {
+    if (!val) {
+      tagFilter = null;
+    } else {
+      var i = val.indexOf(':');
+      tagFilter = {axis: val.slice(0, i), value: val.slice(i + 1)};
+    }
     if (GRAPH) repaint();
   }
 

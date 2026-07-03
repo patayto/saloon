@@ -1,12 +1,13 @@
+{% load spotify_extras %}
 {% if tags and tags.tags %}
-  {% with mood=tags.tags.mood theme=tags.tags.theme scene=tags.tags.scene %}
+  {% with mood=tags.tags.mood theme=tags.tags.theme scene=tags.tags.scene style=tags.tags.style tempo_feel=tags.tags.tempo_feel %}
   <div class="space-y-2">
 
     {% if mood %}
     <div class="flex flex-wrap items-center gap-1.5">
       <span class="text-xs text-gray-500 w-12 shrink-0">Mood</span>
-      {% for t in mood %}
-        <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-violet-900/60 text-violet-300 border border-violet-700/50">{{ t }}</span>
+      {% for t, s in mood|sort_tags %}
+        <span title="score {{ s }}" class="px-2 py-0.5 rounded-full text-xs font-medium bg-violet-900/60 text-violet-300 border border-violet-700/50">{{ t }}</span>
       {% endfor %}
     </div>
     {% endif %}
@@ -14,8 +15,8 @@
     {% if theme %}
     <div class="flex flex-wrap items-center gap-1.5">
       <span class="text-xs text-gray-500 w-12 shrink-0">Theme</span>
-      {% for t in theme %}
-        <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-900/60 text-indigo-300 border border-indigo-700/50">{{ t }}</span>
+      {% for t, s in theme|sort_tags %}
+        <span title="score {{ s }}" class="px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-900/60 text-indigo-300 border border-indigo-700/50">{{ t }}</span>
       {% endfor %}
     </div>
     {% endif %}
@@ -23,8 +24,26 @@
     {% if scene %}
     <div class="flex flex-wrap items-center gap-1.5">
       <span class="text-xs text-gray-500 w-12 shrink-0">Scene</span>
-      {% for t in scene %}
-        <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-teal-900/60 text-teal-300 border border-teal-700/50">{{ t }}</span>
+      {% for t, s in scene|sort_tags %}
+        <span title="score {{ s }}" class="px-2 py-0.5 rounded-full text-xs font-medium bg-teal-900/60 text-teal-300 border border-teal-700/50">{{ t }}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if style %}
+    <div class="flex flex-wrap items-center gap-1.5">
+      <span class="text-xs text-gray-500 w-12 shrink-0">Style</span>
+      {% for t, s in style|sort_tags %}
+        <span title="score {{ s }}" class="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-900/60 text-amber-300 border border-amber-700/50">{{ t }}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if tempo_feel %}
+    <div class="flex flex-wrap items-center gap-1.5">
+      <span class="text-xs text-gray-500 w-12 shrink-0">Feel</span>
+      {% for t, s in tempo_feel|sort_tags %}
+        <span title="score {{ s }}" class="px-2 py-0.5 rounded-full text-xs font-medium bg-rose-900/60 text-rose-300 border border-rose-700/50">{{ t }}</span>
       {% endfor %}
     </div>
     {% endif %}

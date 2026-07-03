@@ -159,10 +159,29 @@
         hx-get="{% url 'tracks_table' %}"
         hx-trigger="input changed delay:300ms"
         hx-target="#tracks-table"
-        hx-include="#sort-field, #dir-field"
+        hx-include="#sort-field, #dir-field, #tag-select"
         hx-push-url="true"
         class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm placeholder-gray-500 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500"
       >
+      <select
+        id="tag-select"
+        name="tag"
+        hx-get="{% url 'tracks_table' %}"
+        hx-trigger="change"
+        hx-target="#tracks-table"
+        hx-include="#q-input, #sort-field, #dir-field"
+        hx-push-url="true"
+        class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-300 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500"
+      >
+        <option value="">All tags</option>
+        {% for axis, values in tag_options.items %}
+          <optgroup label="{{ axis }}">
+            {% for v in values %}
+              <option value="{{ axis }}:{{ v }}" {% if tag == axis|add:":"|add:v %}selected{% endif %}>{{ v }}</option>
+            {% endfor %}
+          </optgroup>
+        {% endfor %}
+      </select>
     </div>
     <div id="tracks-table">
       {% include "spotify/partials/tracks_table.html" %}

@@ -4,8 +4,9 @@ from collections import Counter
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 
+from analysis.management.commands.compute_track_tags import ALLOWED as TAG_ALLOWED
 from analysis.mashup import af_row
-from analysis.models import LyricEmbedding
+from analysis.models import LyricEmbedding, TrackTags
 from spotify.models import AudioFeatures, PlaylistTrack, SavedTrack, Track
 
 LYRIC_K, LYRIC_MIN_SIM = 5, 0.75
@@ -24,6 +25,7 @@ def build_graph() -> dict:
         AudioFeatures.objects.count(),
         LyricEmbedding.objects.count(),
         PlaylistTrack.objects.count(),
+        TrackTags.objects.count(),
     )
     if _cache.get("key") != key:
         _cache.update({"key": key, "graph": _build()})
@@ -36,6 +38,19 @@ def _build() -> dict:
         .select_related("track", "track__audio_features", "track__sentiment")
         .prefetch_related("track__artists")
     )
+    tag_map: dict[str, dict] = {}
+    axes_present: dict[str, set] = {}
+    for tid, tags in TrackTags.objects.values_list("track_id", "tags"):
+        clean = {}
+        for axis, vals in (tags or {}).items():
+            # pre-v2 rows stored plain lists; treat as score 1.0
+            vals = vals if isinstance(vals, dict) else {v: 1.0 for v in vals}
+            if vals:
+                clean[axis] = vals
+                axes_present.setdefault(axis, set()).update(vals)
+        if clean:
+            tag_map[tid] = clean
+
     nodes = []
     idx: dict[str, int] = {}
     for i, st in enumerate(saved):
@@ -51,6 +66,7 @@ def _build() -> dict:
             "valence": af.valence if af else None,
             "energy": af.energy if af else None,
             "sentiment": sent.vader_compound if sent else None,
+            "tags": tag_map.get(t.id, {}),
         })
 
     links = (
@@ -59,7 +75,14 @@ def _build() -> dict:
         + _playlist_edges(idx)
         + _artist_edges(idx)
     )
-    return {"nodes": nodes, "links": links, "types": EDGE_TYPES}
+    return {
+        "nodes": nodes,
+        "links": links,
+        "types": EDGE_TYPES,
+        "tag_axes": {
+            axis: sorted(axes_present[axis]) for axis in TAG_ALLOWED if axes_present.get(axis)
+        },
+    }
 
 
 def _top_k_sim_edges(

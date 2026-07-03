@@ -18,6 +18,7 @@ import requests as http_requests
 from spotify.auth import exchange_code, get_access_token
 from spotify.audio_features.reccobeats import ReccoBeatsProvider
 from spotify.deezer import search_track as deezer_search_track
+from analysis.management.commands.compute_track_tags import ALLOWED as TAG_ALLOWED
 from analysis.models import TrackTags
 from spotify.models import AudioFeatures, Playlist, PlaylistTrack, SavedTrack, SpotifyToken, Track, TrackLyrics
 
@@ -122,6 +123,7 @@ def library(request: HttpRequest) -> HttpResponse:
     ctx["spotify_user"] = user_token if (user_token and user_token.display_name) else None
     ctx["af_total_count"] = AudioFeatures.objects.count()
     ctx["playlists_count"] = Playlist.objects.count()
+    ctx["tag_options"] = _tag_options()
     return render(request, "spotify/library.html", ctx)
 
 
@@ -716,6 +718,7 @@ def sync_library_status(request: HttpRequest, job_id: str) -> HttpResponse:
 
 def _table_context(request: HttpRequest) -> dict:
     q = request.GET.get("q", "").strip()
+    tag = request.GET.get("tag", "").strip()
     sort = request.GET.get("sort", "added_at")
     direction = request.GET.get("dir", "desc")
     page_num = request.GET.get("page", 1)
@@ -733,6 +736,16 @@ def _table_context(request: HttpRequest) -> dict:
             | Q(track__artists__name__icontains=q)
             | Q(track__album__name__icontains=q)
         ).distinct()
+
+    if tag:
+        axis, _, value = tag.partition(":")
+        # ponytail: JSONField containment is unsupported on SQLite — scan rows in Python (~3.6k)
+        tag_ids = [
+            tid
+            for tid, tags in TrackTags.objects.values_list("track_id", "tags")
+            if value in (tags or {}).get(axis, {})
+        ]
+        qs = qs.filter(track_id__in=tag_ids)
 
     order_field = SORT_FIELDS[sort]
     qs = qs.order_by(order_field if direction == "asc" else f"-{order_field}")
@@ -754,6 +767,7 @@ def _table_context(request: HttpRequest) -> dict:
     return {
         "page": page,
         "q": q,
+        "tag": tag,
         "sort": sort,
         "dir": direction,
         "sort_dirs": sort_dirs,
@@ -761,6 +775,15 @@ def _table_context(request: HttpRequest) -> dict:
         "af_ids": af_ids,
         "lyrics_ids": lyrics_ids,
     }
+
+
+def _tag_options() -> dict:
+    """Axis → sorted tags actually present in the DB, in canonical axis order."""
+    present: dict[str, set] = {}
+    for tags in TrackTags.objects.values_list("tags", flat=True):
+        for axis, vals in (tags or {}).items():
+            present.setdefault(axis, set()).update(vals)
+    return {axis: sorted(present[axis]) for axis in TAG_ALLOWED if present.get(axis)}
 
 
 def _af_table_context(request: HttpRequest) -> dict:
@@ -854,9 +877,17 @@ def mashup_compat(request: HttpRequest) -> HttpResponse:
         score_color = "#22c55e" if s >= 75 else "#eab308" if s >= 50 else "#f97316" if s >= 25 else "#ef4444"
     id1, id2 = sorted([t1, t2]) if t1 and t2 else (t1, t2)
     already_saved = MashupPair.objects.filter(track1_id=id1, track2_id=id2).exists() if (id1 and id2) else False
+    shared_tags = []
+    if t1 and t2:
+        rows = {tt.track_id: tt.tags for tt in TrackTags.objects.filter(track_id__in=[t1, t2])}
+        tags1, tags2 = rows.get(t1) or {}, rows.get(t2) or {}
+        for axis in TAG_ALLOWED:
+            for tag_val in tags1.get(axis, {}):
+                if tag_val in tags2.get(axis, {}):
+                    shared_tags.append({"axis": axis, "tag": tag_val})
     return render(request, "spotify/partials/mashup_compat.html", {
         "compat": compat, "af1": af1, "af2": af2, "score_color": score_color,
-        "t1": t1, "t2": t2, "already_saved": already_saved,
+        "t1": t1, "t2": t2, "already_saved": already_saved, "shared_tags": shared_tags,
     })
 
 

@@ -70,6 +70,25 @@
     {% endfor %}
   </div>
 
+  <!-- Shared tags -->
+  <div class="border-t border-gray-800 pt-3 mt-3">
+    <p class="text-xs text-gray-500 text-center mb-2">Shared Tags</p>
+    {% if shared_tags %}
+    <div class="flex flex-wrap justify-center gap-1.5">
+      {% for st in shared_tags %}
+        <span title="{{ st.axis }}" class="px-2 py-0.5 rounded-full text-xs font-medium
+          {% if st.axis == 'mood' %}bg-violet-900/60 text-violet-300 border border-violet-700/50
+          {% elif st.axis == 'theme' %}bg-indigo-900/60 text-indigo-300 border border-indigo-700/50
+          {% elif st.axis == 'scene' %}bg-teal-900/60 text-teal-300 border border-teal-700/50
+          {% elif st.axis == 'style' %}bg-amber-900/60 text-amber-300 border border-amber-700/50
+          {% else %}bg-rose-900/60 text-rose-300 border border-rose-700/50{% endif %}">{{ st.tag }}</span>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-xs text-gray-600 text-center">No overlapping tags</p>
+    {% endif %}
+  </div>
+
 </div>
 {% else %}
 <div class="flex flex-col items-center justify-center h-full text-center px-4">
