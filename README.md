@@ -84,7 +84,7 @@ docker compose exec web .venv/bin/python manage.py <command>
 | `sync_playlist_tracks <id>` | Per-playlist delta sync (adds/removes/reorders tracks) |
 | `compute_sentiment` | VADER sentiment backfill for tracks with lyrics |
 | `compute_lyric_embeddings` | Ollama lyric embedding backfill (requires Ollama running) |
-| `compute_track_tags` | LLM tag backfill via OpenRouter across five axes: mood, theme, scene, style, tempo feel (requires `OPENROUTER_API_KEY`); use `--retry` to cycle through free model fallbacks on 429/5xx; `--refresh-stale` to re-tag tracks tagged under an older vocabulary |
+| `compute_track_tags` | LLM tag backfill via OpenRouter across five axes: mood, theme, scene, style, tempo feel (requires `OPENROUTER_API_KEY`); use `--retry` to cycle through free model fallbacks on 429/5xx; `--workers N` to tag N tracks concurrently (default 5); `--refresh-stale` to re-tag tracks tagged under an older vocabulary |
 | `backfill_promoted_tags` | Merge recorded out-of-vocabulary tag suggestions into existing track tags after a tag is promoted into the allowed list (no LLM calls) |
 
 ## OpenRouter (optional — track tags)
@@ -120,7 +120,7 @@ docker compose exec web .venv/bin/python manage.py compute_track_tags --force
 
 Or click **Generate Tags** / **Regenerate** in any track's detail modal — tag generation runs in the background and shows live inline progress (model being tried, model index, attempt number) while it works.
 
-Default model: `google/gemma-4-31b-it:free`. Override with `--model <model-id>` — run `--help` for a list of suggested free models. Any OpenRouter model slug is accepted.
+Default model: `google/gemma-4-26b-a4b-it:free`. Override with `--model <model-id>` — run `--help` for a list of suggested free models. Any OpenRouter model slug is accepted.
 
 Free models can be rate-limited aggressively (sometimes one request per 10 minutes per model). The UI automatically cycles through the full free model list as fallbacks on 429/5xx. Use `--retry` for the same behaviour in the CLI:
 
@@ -128,7 +128,9 @@ Free models can be rate-limited aggressively (sometimes one request per 10 minut
 docker compose exec web .venv/bin/python manage.py compute_track_tags --retry
 ```
 
-On a 429, the command reads the `Retry-After` header and either waits (if ≤ 60 s) or switches to the next model immediately. 5xx errors use exponential backoff starting at 8 s, capped at 60 s.
+On a 429 or 5xx, the failing model is put on cooldown (the `Retry-After` header when given, otherwise 15 s / 10 s) and the next model is tried immediately — the model list is the retry mechanism. Once a round of all models fails, the command sleeps until the earliest cooldown expires and tries again (up to 3 rounds); if every model reports a recovery more than 2 minutes out (daily-limit territory), it fails fast instead of crawling.
+
+Bulk runs tag 5 tracks concurrently by default (`--workers`, set to 1 for serial). Workers share the cooldown map, so a throttled model discovered by one worker is skipped by all.
 
 ### Growing the tag vocabulary
 

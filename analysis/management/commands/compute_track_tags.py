@@ -3,7 +3,9 @@ import json
 import logging
 import os
 import re
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import requests
 from django.core.management.base import BaseCommand, CommandError
@@ -15,9 +17,9 @@ from spotify.templatetags.spotify_extras import duration_ms, key_name
 logger = logging.getLogger(__name__)
 
 FREE_MODELS = [
-    "google/gemma-4-31b-it:free",
     "google/gemma-4-26b-a4b-it:free",
     "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "google/gemma-4-31b-it:free",
     "nvidia/nemotron-3-super-120b-a12b:free",
     "nvidia/nemotron-3-nano-30b-a3b:free",
     "poolside/laguna-xs-2.1:free",
@@ -144,11 +146,17 @@ MAX_TAGS_PER_AXIS = 6
 # Out-of-vocabulary tags the model proposes: recorded as TagSuggestion rows for audit.
 SUGGESTION_MIN_SCORE = 0.5
 MAX_SUGGESTIONS_PER_AXIS = 3
-_SUGGESTION_RE = re.compile(r"^[a-z][a-z0-9]*(?:_[a-z0-9]+){0,2}$")  # ≤3 words, no sentences
+_SUGGESTION_RE = re.compile(
+    r"^[a-z][a-z0-9]*(?:_[a-z0-9]+){0,2}$"
+)  # ≤3 words, no sentences
 
-# Retry-After values above this (seconds) mean the model is heavily throttled;
-# switch to the next fallback instead of waiting.
-_SWITCH_MODEL_THRESHOLD = 60
+# Throttled/erroring models are skipped by every caller (all threads) until
+# their cooldown expires. 429 cooldown = Retry-After when given, else default.
+_COOLDOWN_429 = 15
+_COOLDOWN_5XX = 10
+_cooldowns: dict[
+    str, float
+] = {}  # model → unix ts; ponytail: unlocked dict, atomic under GIL
 
 _SYSTEM_PROMPT = (
     "You are a music analyst. Given a track's metadata, audio features, and lyrics, "
@@ -231,63 +239,61 @@ def _call_api(user_message: str, model: str, api_url: str) -> dict:
 
 
 def _call_api_with_retry(
-    user_message: str, models: list[str], api_url: str, max_retries: int = 5, attempt_cb=None
+    user_message: str,
+    models: list[str],
+    api_url: str,
+    max_rounds: int = 3,
+    attempt_cb=None,
 ) -> dict:
-    """Try each model in order; retry 429/5xx with exponential backoff.
+    """Try each model in order, skipping any still on cooldown.
 
-    On 429 with Retry-After > _SWITCH_MODEL_THRESHOLD, or after max_retries,
-    moves to the next model. Other 4xx errors are re-raised immediately.
+    A 429/5xx puts the model on cooldown (shared across threads) and moves
+    straight to the next model — the model list IS the retry mechanism.
+    If a whole round yields nothing, sleep until the earliest cooldown
+    expires and go again. Other 4xx errors are re-raised immediately.
     """
-    for model_idx, model in enumerate(models):
-        for attempt in range(max_retries + 1):
+    for round_ in range(1, max_rounds + 1):
+        for model_idx, model in enumerate(models):
+            if _cooldowns.get(model, 0) > time.time():
+                continue
             if attempt_cb:
-                attempt_cb(model, model_idx + 1, len(models), attempt + 1)
+                attempt_cb(model, model_idx + 1, len(models), round_)
             try:
                 return _call_api(user_message, model, api_url)
             except requests.exceptions.HTTPError as e:
                 code = e.response.status_code
                 if code == 429:
-                    # scaling the initial wait time to 4 seconds
-                    wait = min(2 ** (attempt + 2), 60)
-                    retry_after = int(e.response.headers.get("Retry-After", 0)) or wait
-
-                    if retry_after > _SWITCH_MODEL_THRESHOLD or attempt == max_retries:
-                        logger.warning(
-                            "Model %s: 429 (Retry-After=%ds) — switching model",
-                            model,
-                            retry_after,
-                        )
-                        break  # try next model
-
-                    logger.warning(
-                        "Model %s: 429, retrying in %ds (attempt %d/%d)",
-                        model,
-                        retry_after,
-                        attempt + 1,
-                        max_retries,
+                    retry_after = (
+                        int(e.response.headers.get("Retry-After", 0)) or _COOLDOWN_429
                     )
-                    time.sleep(wait)
-                elif 500 <= code < 600:
-                    if attempt == max_retries:
-                        logger.warning(
-                            "Model %s: %d after %d retries — switching model",
-                            model,
-                            code,
-                            max_retries,
-                        )
-                        break
-                    wait = min(2**attempt, 60)
+                    _cooldowns[model] = time.time() + retry_after
                     logger.warning(
-                        "Model %s: %d, retrying in %ds (attempt %d/%d)",
+                        "Model %s: 429 (cooldown %ds) — next model", model, retry_after
+                    )
+                elif 500 <= code < 600:
+                    _cooldowns[model] = time.time() + _COOLDOWN_5XX
+                    logger.warning(
+                        "Model %s: %d (cooldown %ds) — next model",
                         model,
                         code,
-                        wait,
-                        attempt + 1,
-                        max_retries,
+                        _COOLDOWN_5XX,
                     )
-                    time.sleep(wait)
                 else:
                     raise
+        if round_ < max_rounds:
+            wait = min(_cooldowns.get(m, 0) for m in models) - time.time()
+            if wait > 120:
+                # ponytail: likely a daily-limit Retry-After; fail fast instead
+                # of crawling — rerun the command once the limit resets.
+                break
+            wait = max(wait, 1)
+            logger.warning(
+                "All models cooling down — sleeping %.0fs (round %d/%d)",
+                wait,
+                round_,
+                max_rounds,
+            )
+            time.sleep(wait)
     raise CommandError(f"All {len(models)} model(s) exhausted.")
 
 
@@ -345,12 +351,15 @@ def run_sync(
     fallback_models: list[str] | None = None,
     progress_cb=None,
     attempt_cb=None,
+    workers: int = 1,
 ) -> dict:
     """Tag tracks via OpenRouter using lyrics + audio features.
 
     Skips tracks already tagged for this model_name, instrumental tracks,
     and tracks with no lyrics. On per-track failures, increments errors and
     continues. With fallback_models, cycles through them per-track on 429/5xx.
+    With workers > 1, tags that many tracks concurrently (threads share the
+    model cooldown map, so one throttled model is skipped by all).
 
     Returns: {"model", "saved", "skipped_existing", "skipped_no_lyrics", "errors"}
     """
@@ -411,12 +420,15 @@ def run_sync(
     # _ping(model, api_url)
     # logger.info("Openrouter ping OK")
 
-    for row in rows:
+    models = [model] + [m for m in (fallback_models or []) if m != model]
+    lock = threading.Lock()
+
+    def _tag_one(row):
+        nonlocal saved, errors, done
         track_label = f"{row.track.name!r} ({row.track_id})"
         logger.info("Tagging %s", track_label)
         try:
             user_msg = _build_user_message(row, af_map.get(row.track_id))
-            models = [model] + [m for m in (fallback_models or []) if m != model]
             raw = _call_api_with_retry(user_msg, models, api_url, attempt_cb=attempt_cb)
             tags, strays = _validate(raw)
             logger.info("Tagged %s → %s", track_label, tags)
@@ -435,13 +447,23 @@ def run_sync(
                         tag=tag,
                         defaults={"score": score, "model_name": model},
                     )
-            saved += 1
+            with lock:
+                saved += 1
         except Exception:
             logger.exception("Failed to tag %s", track_label)
-            errors += 1
-        done += 1
-        if progress_cb:
-            progress_cb(done, total)
+            with lock:
+                errors += 1
+        with lock:
+            done += 1
+            if progress_cb:
+                progress_cb(done, total)
+
+    if workers > 1:
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            list(ex.map(_tag_one, rows))
+    else:
+        for row in rows:
+            _tag_one(row)
 
     logger.info("run_sync complete: saved=%d errors=%d", saved, errors)
 
@@ -497,9 +519,15 @@ class Command(BaseCommand):
             default=False,
             help=(
                 "On 429/5xx, cycle through FREE_MODELS as per-track fallbacks. "
-                "Uses exponential backoff; switches model when Retry-After "
-                f"exceeds {_SWITCH_MODEL_THRESHOLD}s or retries are exhausted."
+                "A throttled model goes on cooldown (Retry-After) and is "
+                "skipped until it expires."
             ),
+        )
+        parser.add_argument(
+            "--workers",
+            type=int,
+            default=5,
+            help="Number of tracks to tag concurrently (default: 5; 1 = serial).",
         )
 
     def handle(self, *args, **options):
@@ -567,6 +595,7 @@ class Command(BaseCommand):
             track_ids=track_ids,
             fallback_models=FREE_MODELS if retry else None,
             progress_cb=_progress,
+            workers=options["workers"],
         )
         print()
 

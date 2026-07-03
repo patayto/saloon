@@ -1,6 +1,9 @@
+import time
 from unittest.mock import patch
 
+import requests
 from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.test import TestCase
 
 from analysis.management.commands.backfill_promoted_tags import merge_tag
@@ -9,6 +12,8 @@ from analysis.management.commands.compute_track_tags import (
     MAX_TAGS_PER_AXIS,
     TAG_SCORE_THRESHOLD,
     VOCAB_HASH,
+    _call_api_with_retry,
+    _cooldowns,
     _validate,
 )
 from analysis.models import TagSuggestion, TrackTags
@@ -61,6 +66,60 @@ class ValidateTagsTests(TestCase):
         # normalized "Late Night" matches allowed late_night → kept, not a stray
         self.assertEqual(out["scene"], {"late_night": 0.8})
         self.assertNotIn("scene", strays)
+
+
+class CallApiWithRetryTests(TestCase):
+    def setUp(self):
+        _cooldowns.clear()
+
+    def _http_error(self, code, headers=None):
+        resp = requests.Response()
+        resp.status_code = code
+        resp.headers.update(headers or {})
+        return requests.exceptions.HTTPError(response=resp)
+
+    def test_429_moves_to_next_model_and_sets_cooldown(self):
+        calls = []
+
+        def fake_call(msg, model, url):
+            calls.append(model)
+            if model == "a":
+                raise self._http_error(429, {"Retry-After": "30"})
+            return {"mood": {}}
+
+        with patch(
+            "analysis.management.commands.compute_track_tags._call_api", fake_call
+        ):
+            result = _call_api_with_retry("msg", ["a", "b"], "url")
+        self.assertEqual(result, {"mood": {}})
+        self.assertEqual(calls, ["a", "b"])
+        self.assertIn("a", _cooldowns)
+
+    def test_cooled_model_skipped(self):
+        _cooldowns["a"] = time.time() + 60
+        calls = []
+
+        def fake_call(msg, model, url):
+            calls.append(model)
+            return {}
+
+        with patch(
+            "analysis.management.commands.compute_track_tags._call_api", fake_call
+        ):
+            _call_api_with_retry("msg", ["a", "b"], "url")
+        self.assertEqual(calls, ["b"])
+
+    def test_long_retry_after_fails_fast(self):
+        def fake_call(msg, model, url):
+            raise self._http_error(429, {"Retry-After": "3600"})
+
+        with patch(
+            "analysis.management.commands.compute_track_tags._call_api", fake_call
+        ):
+            start = time.time()
+            with self.assertRaises(CommandError):
+                _call_api_with_retry("msg", ["a", "b"], "url")
+            self.assertLess(time.time() - start, 5)
 
 
 class MergeTagTests(TestCase):
