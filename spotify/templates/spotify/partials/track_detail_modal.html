@@ -97,6 +97,14 @@
 
   </div>
 
+  <!-- Tags section -->
+  <div class="mb-5">
+    <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Tags</h3>
+    <div id="track-modal-tags">
+      {% include "spotify/partials/track_tags.html" with tags=tags track_id=track.id %}
+    </div>
+  </div>
+
   <!-- Audio Features section -->
   <div class="mb-5">
     <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Audio Features</h3>

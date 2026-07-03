@@ -124,6 +124,24 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "simple": {"format": "%(levelname)s %(name)s: %(message)s"},
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "simple",
+        },
+    },
+    "loggers": {
+        "analysis": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
+        "spotify": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
+    },
+}
+
 # Spotify OAuth
 SPOTIFY_CLIENT_ID = os.environ.get("SPOTIFY_CLIENT_ID", "")
 SPOTIFY_CLIENT_SECRET = os.environ.get("SPOTIFY_CLIENT_SECRET", "")

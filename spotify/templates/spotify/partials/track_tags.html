@@ -1,0 +1,65 @@
+{% if tags and tags.tags %}
+  {% with mood=tags.tags.mood theme=tags.tags.theme scene=tags.tags.scene %}
+  <div class="space-y-2">
+
+    {% if mood %}
+    <div class="flex flex-wrap items-center gap-1.5">
+      <span class="text-xs text-gray-500 w-12 shrink-0">Mood</span>
+      {% for t in mood %}
+        <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-violet-900/60 text-violet-300 border border-violet-700/50">{{ t }}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if theme %}
+    <div class="flex flex-wrap items-center gap-1.5">
+      <span class="text-xs text-gray-500 w-12 shrink-0">Theme</span>
+      {% for t in theme %}
+        <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-900/60 text-indigo-300 border border-indigo-700/50">{{ t }}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if scene %}
+    <div class="flex flex-wrap items-center gap-1.5">
+      <span class="text-xs text-gray-500 w-12 shrink-0">Scene</span>
+      {% for t in scene %}
+        <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-teal-900/60 text-teal-300 border border-teal-700/50">{{ t }}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="pt-1">
+      <button
+        hx-post="{% url 'fetch_track_tags' track_id %}"
+        hx-target="#track-modal-tags"
+        hx-swap="innerHTML"
+        hx-on:htmx:before-request="this.disabled=true; this.textContent='Regenerating…'"
+        class="text-xs text-gray-600 hover:text-gray-400 transition-colors disabled:cursor-not-allowed"
+      >Regenerate</button>
+    </div>
+  </div>
+  {% endwith %}
+
+{% elif error %}
+  <div class="rounded-lg bg-gray-800/50 border border-gray-700 px-4 py-3 text-sm text-gray-400">
+    {{ error }}
+  </div>
+
+{% else %}
+  <button
+    hx-post="{% url 'fetch_track_tags' track_id %}"
+    hx-target="#track-modal-tags"
+    hx-swap="innerHTML"
+    hx-indicator="#fetch-tags-spinner"
+    hx-on:htmx:before-request="this.disabled=true; document.getElementById('fetch-tags-label').textContent='Generating…'"
+    class="inline-flex items-center gap-2 bg-violet-700 hover:bg-violet-600 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded font-medium text-sm transition-colors"
+  >
+    <span id="fetch-tags-label">Generate Tags</span>
+    <svg id="fetch-tags-spinner" class="htmx-indicator w-4 h-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+    </svg>
+  </button>
+  <p class="mt-2 text-xs text-gray-500">Requires OPENROUTER_API_KEY.</p>
+{% endif %}

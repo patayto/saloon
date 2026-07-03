@@ -51,6 +51,21 @@ class TrackFeatureVector(models.Model):
         return f"TrackFeatureVector({self.track_id}, {self.version})"
 
 
+class TrackTags(models.Model):
+    track = models.ForeignKey(
+        "spotify.Track", on_delete=models.CASCADE, related_name="track_tags"
+    )
+    model_name = models.CharField(max_length=128)
+    tags = models.JSONField()  # {"mood": [...], "theme": [...], "scene": [...]}
+    computed_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = [("track", "model_name")]
+
+    def __str__(self):
+        return f"TrackTags({self.track_id}, {self.model_name})"
+
+
 class MashupPair(models.Model):
     track1 = models.ForeignKey("spotify.Track", on_delete=models.CASCADE, related_name="+")
     track2 = models.ForeignKey("spotify.Track", on_delete=models.CASCADE, related_name="+")

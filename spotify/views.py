@@ -18,6 +18,7 @@ import requests as http_requests
 from spotify.auth import exchange_code, get_access_token
 from spotify.audio_features.reccobeats import ReccoBeatsProvider
 from spotify.deezer import search_track as deezer_search_track
+from analysis.models import TrackTags
 from spotify.models import AudioFeatures, Playlist, PlaylistTrack, SavedTrack, SpotifyToken, Track, TrackLyrics
 
 AUTHORIZE_URL = "https://accounts.spotify.com/authorize"
@@ -142,11 +143,13 @@ def track_detail(request: HttpRequest, track_id: str) -> HttpResponse:
     af = AudioFeatures.objects.filter(track_id=track_id).first()
     saved = SavedTrack.objects.filter(track_id=track_id).first()
     lyrics = TrackLyrics.objects.filter(track_id=track_id).first()
+    tags = TrackTags.objects.filter(track_id=track_id).first()
     return render(request, "spotify/partials/track_detail_modal.html", {
         "track": track,
         "saved": saved,
         "af": af,
         "lyrics": lyrics,
+        "tags": tags,
     })
 
 
@@ -275,6 +278,27 @@ def fetch_track_lyrics(request: HttpRequest, track_id: str) -> HttpResponse:
             logger.warning("Lyric embedding skipped for %s (Ollama unavailable?)", track_id)
 
     return render(request, "spotify/partials/track_lyrics.html", {"lyrics": lyrics, "track": track})
+
+
+def fetch_track_tags(request: HttpRequest, track_id: str) -> HttpResponse:
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+
+    from analysis.management.commands.compute_track_tags import run_sync as _tag_sync, DEFAULT_MODEL as _TAG_MODEL
+    try:
+        run_sync_kwargs = dict(model=_TAG_MODEL, track_ids=[track_id])
+        # Force recompute: delete existing row so run_sync doesn't skip it
+        TrackTags.objects.filter(track_id=track_id, model_name=_TAG_MODEL).delete()
+        _tag_sync(**run_sync_kwargs)
+    except Exception as exc:
+        logger.exception("fetch_track_tags failed for track %s", track_id)
+        return render(request, "spotify/partials/track_tags.html", {
+            "tags": None, "track_id": track_id, "error": str(exc),
+        })
+    tags = TrackTags.objects.filter(track_id=track_id).first()
+    if not tags:
+        logger.warning("fetch_track_tags: no tags saved for track %s (check logs above)", track_id)
+    return render(request, "spotify/partials/track_tags.html", {"tags": tags, "track_id": track_id})
 
 
 def track_mashup_candidates(request: HttpRequest, track_id: str) -> HttpResponse:

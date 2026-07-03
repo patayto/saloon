@@ -11,6 +11,7 @@ A personal Spotify library browser and analyser.
 - Mashup partner suggestions (KNN over audio features + lyric embeddings)
 - Mashup tab: compare any two library tracks side by side with a compatibility score (0–100), per-feature diffs, and hover notes based on harmonic rules
 - Background sync jobs with live progress panel in the UI
+- LLM-generated mood / theme / scene tags per track (via OpenRouter)
 
 ## Requirements
 
@@ -42,6 +43,7 @@ Open [http://localhost:8000](http://localhost:8000).
 | `SPOTIFY_REDIRECT_URI` | yes | OAuth callback — default `http://localhost:8000/spotify/callback/` |
 | `GENIUS_ACCESS_TOKEN` | no | Genius API token for fallback lyrics |
 | `OLLAMA_URL` | no | Ollama base URL for lyric embeddings (default: `http://localhost:11434`; use `http://host.docker.internal:11434` in Docker) |
+| `OPENROUTER_API_KEY` | no | [OpenRouter](https://openrouter.ai/) API key for track tag generation |
 | `SECRET_KEY` | no | Django secret key (a default is provided for local dev; set this in production) |
 
 Add `http://localhost:8000/spotify/callback/` to the **Redirect URIs** list in your Spotify app settings.
@@ -79,6 +81,22 @@ docker compose exec web .venv/bin/python manage.py <command>
 | `sync_playlist_tracks <id>` | Per-playlist delta sync (adds/removes/reorders tracks) |
 | `compute_sentiment` | VADER sentiment backfill for tracks with lyrics |
 | `compute_lyric_embeddings` | Ollama lyric embedding backfill (requires Ollama running) |
+| `compute_track_tags` | LLM mood/theme/scene tag backfill via OpenRouter (requires `OPENROUTER_API_KEY`) |
+
+## OpenRouter (optional — track tags)
+
+Mood, theme, and scene tags appear in the track detail modal. Requires a free [OpenRouter](https://openrouter.ai/) account:
+
+1. Create an API key at [openrouter.ai/keys](https://openrouter.ai/keys)
+2. Add `OPENROUTER_API_KEY=<your-key>` to `.env`
+
+Bulk backfill (skips tracks already tagged):
+
+```bash
+docker compose exec web .venv/bin/python manage.py compute_track_tags
+```
+
+Or click **Generate Tags** in any track's detail modal. Default model: `nvidia/nemotron-3-ultra-550b-a55b:free`. Override with `--model <model-id>`.
 
 ## Ollama (optional — lyric embeddings)
 
