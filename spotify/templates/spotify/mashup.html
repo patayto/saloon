@@ -172,5 +172,17 @@
       setTimeout(syncCompatLayout, 30);
     }
   });
+
+  // Pre-fill both slots from a pair stashed by a track's mashup suggestions list.
+  window.consumeMashupPair = function() {
+    var raw = sessionStorage.getItem('mashupPair');
+    if (!raw) return;
+    sessionStorage.removeItem('mashupPair');
+    var p = JSON.parse(raw);
+    openMashupExplorer();
+    selectTrack(1, p[0], p[1]);
+    selectTrack(2, p[2], p[3]);
+  };
+  consumeMashupPair();
 })();
 </script>
