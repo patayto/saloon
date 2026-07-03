@@ -17,14 +17,14 @@ from spotify.templatetags.spotify_extras import duration_ms, key_name
 logger = logging.getLogger(__name__)
 
 FREE_MODELS = [
-    "google/gemma-4-26b-a4b-it:free",
     "nvidia/nemotron-3-ultra-550b-a55b:free",
-    "google/gemma-4-31b-it:free",
     "nvidia/nemotron-3-super-120b-a12b:free",
-    "nvidia/nemotron-3-nano-30b-a3b:free",
-    "poolside/laguna-xs-2.1:free",
-    "poolside/laguna-m.1:free",
     "openai/gpt-oss-120b:free",
+    "google/gemma-4-31b-it:free",
+    "google/gemma-4-26b-a4b-it:free",
+    "poolside/laguna-xs-2.1:free",
+    "nvidia/nemotron-3-nano-30b-a3b:free",
+    "poolside/laguna-m.1:free",
     "openai/gpt-oss-20b:free",
 ]
 DEFAULT_MODEL = FREE_MODELS[0]
@@ -352,6 +352,7 @@ def run_sync(
     progress_cb=None,
     attempt_cb=None,
     workers: int = 1,
+    limit: int | None = None,
 ) -> dict:
     """Tag tracks via OpenRouter using lyrics + audio features.
 
@@ -375,7 +376,9 @@ def run_sync(
     if track_ids is not None:
         qs = qs.filter(track_id__in=track_ids)
     else:
-        qs = qs.filter(track__saved__isnull=False)
+        qs = qs.filter(track__saved__isnull=False).order_by("-track__saved__added_at")
+        if limit:
+            qs = qs[:limit]
 
     rows = list(qs)
     empty = [r for r in rows if not (r.plain_lyrics or "").strip()]
@@ -529,6 +532,13 @@ class Command(BaseCommand):
             default=5,
             help="Number of tracks to tag concurrently (default: 5; 1 = serial).",
         )
+        parser.add_argument(
+            "--limit",
+            type=int,
+            default=None,
+            metavar="N",
+            help="Process at most N tracks (the most recently saved without tags).",
+        )
 
     def handle(self, *args, **options):
         model = options["model"]
@@ -596,6 +606,7 @@ class Command(BaseCommand):
             fallback_models=FREE_MODELS if retry else None,
             progress_cb=_progress,
             workers=options["workers"],
+            limit=options["limit"],
         )
         print()
 
