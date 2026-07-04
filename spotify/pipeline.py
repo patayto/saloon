@@ -18,7 +18,12 @@ from spotify.models import AudioFeatures, Track, TrackLyrics
 logger = logging.getLogger(__name__)
 
 
-def enrich_tracks(track_ids: list[str], compute_sentiment: bool = False) -> dict:
+def enrich_tracks(
+    track_ids: list[str],
+    compute_sentiment: bool = False,
+    compute_tags: bool = False,
+    stage_cb=None,
+) -> dict:
     """Fetch audio features and lyrics for the given track IDs.
 
     Skips tracks that already have audio features / lyrics.
@@ -27,6 +32,13 @@ def enrich_tracks(track_ids: list[str], compute_sentiment: bool = False) -> dict
         track_ids: Spotify track IDs to process.
         compute_sentiment: If True, also run VADER sentiment analysis on any
             newly available lyrics (phase 3). Off by default.
+        compute_tags: If True, also generate LLM tags via OpenRouter for tracks
+            with lyrics + audio features. Off by default.
+            # ponytail: opt-in so bulk syncs don't hammer OpenRouter free-model
+            # rate limits; pass compute_tags=True into sync_saved_tracks /
+            # sync_playlists (one line each) if bulk tagging is ever wanted.
+        stage_cb: Optional callable(stage: str) invoked before each phase, for
+            live progress reporting (e.g. the save-to-library UI spinner).
 
     Returns:
         {
@@ -45,16 +57,33 @@ def enrich_tracks(track_ids: list[str], compute_sentiment: bool = False) -> dict
             result["sentiment"] = {"saved": 0, "skipped_no_lyrics": 0, "skipped_instrumental": 0}
         return result
 
-    result = {
-        "audio_features": _enrich_audio_features(track_ids),
-        "lyrics": _enrich_lyrics(track_ids),
-    }
+    def _stage(label):
+        if stage_cb:
+            stage_cb(label)
+
+    _stage("Fetching audio features")
+    audio_features = _enrich_audio_features(track_ids)
+    _stage("Fetching lyrics")
+    lyrics = _enrich_lyrics(track_ids)
+    result = {"audio_features": audio_features, "lyrics": lyrics}
 
     try:
         from analysis.management.commands.compute_lyric_embeddings import run_sync as _embed_lyrics
+        _stage("Embedding lyrics")
         _embed_lyrics(track_ids=track_ids)
     except Exception:
         logger.warning("Lyric embedding skipped during enrichment (Ollama unavailable?)")
+
+    if compute_tags:
+        try:
+            from analysis.management.commands.compute_track_tags import (
+                FREE_MODELS,
+                run_sync as _tag_sync,
+            )
+            _stage("Generating tags")
+            _tag_sync(track_ids=track_ids, fallback_models=FREE_MODELS)
+        except Exception:
+            logger.warning("Tag generation skipped during enrichment (OpenRouter key/quota?)")
 
     if compute_sentiment:
         from analysis.management.commands.compute_sentiment import run_sync as compute_sentiment_sync

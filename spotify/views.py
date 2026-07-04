@@ -31,7 +31,7 @@ from spotify.models import (
 )
 
 AUTHORIZE_URL = "https://accounts.spotify.com/authorize"
-SCOPE = "user-library-read user-read-private"
+SCOPE = "user-library-read user-library-modify user-read-private"
 
 # In-memory job store for background playlist sync tasks.
 # Single-user dev tool; no cleanup needed.
@@ -400,6 +400,69 @@ def fetch_track_tags_status(request: HttpRequest, track_id: str, job_id: str) ->
         )
     tags = TrackTags.objects.filter(track_id=track_id).first()
     return render(request, "spotify/partials/track_tags.html", {"tags": tags, "track_id": track_id})
+
+
+def save_track_to_library(request: HttpRequest, track_id: str) -> HttpResponse:
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+
+    from spotify import client
+
+    track = get_object_or_404(Track, id=track_id)
+
+    try:
+        client.save_track(track_id)
+    except http_requests.HTTPError as exc:
+        status = exc.response.status_code if exc.response is not None else None
+        if status in (401, 403):
+            error = "Re-authenticate with Spotify to enable saving (needs library-modify)."
+        else:
+            error = f"Spotify rejected the save request (HTTP {status})."
+        return render(request, "spotify/partials/track_save.html", {"track_id": track_id, "error": error})
+
+    job_id = str(uuid.uuid4())
+    _sync_jobs[job_id] = {"status": "running", "stage": "Saved — enriching…"}
+
+    def _stage_cb(stage: str) -> None:
+        _sync_jobs[job_id]["stage"] = stage
+
+    def _run():
+        try:
+            from django.utils import timezone
+
+            from spotify.pipeline import enrich_tracks
+
+            SavedTrack.objects.get_or_create(
+                track_id=track.id, defaults={"added_at": timezone.now()}
+            )
+            enrich_tracks([track.id], compute_tags=True, stage_cb=_stage_cb)
+            _sync_jobs[job_id]["status"] = "complete"
+        except Exception:
+            logger.exception("save_track_to_library enrichment failed for %s", track_id)
+            _sync_jobs[job_id].update({"status": "error", "error": traceback.format_exc()})
+
+    threading.Thread(target=_run, daemon=True).start()
+
+    return render(
+        request,
+        "spotify/partials/track_save.html",
+        {"track_id": track_id, "job_id": job_id, "status_label": _sync_jobs[job_id]["stage"]},
+    )
+
+
+def save_track_status(request: HttpRequest, track_id: str, job_id: str) -> HttpResponse:
+    job = _sync_jobs.get(job_id)
+    if job is None or job["status"] == "error":
+        error = (job or {}).get("error", "Save job not found (server may have restarted).")
+        return render(request, "spotify/partials/track_save.html", {"track_id": track_id, "error": error})
+    if job["status"] == "running":
+        return render(
+            request,
+            "spotify/partials/track_save.html",
+            {"track_id": track_id, "job_id": job_id, "status_label": job.get("stage", "Saving to library…")},
+        )
+    # complete → tell the partial to refresh the whole modal
+    return render(request, "spotify/partials/track_save.html", {"track_id": track_id, "done": True})
 
 
 def track_mashup_candidates(request: HttpRequest, track_id: str) -> HttpResponse:

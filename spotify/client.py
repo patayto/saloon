@@ -28,6 +28,17 @@ def get_track(track_id: str) -> dict:
     return resp.json()
 
 
+def save_track(track_id: str) -> None:
+    """Add a track to the user's Liked Songs (PUT /v1/me/tracks). Needs user-library-modify."""
+    resp = requests.put(
+        f"{_BASE_URL}/me/tracks",
+        headers={"Authorization": f"Bearer {get_access_token()}"},
+        params={"ids": track_id},
+        timeout=10,
+    )
+    resp.raise_for_status()
+
+
 def get_user_playlists(page_size: int = 50):
     """Yield simplified playlist objects for the current user (paginated)."""
     url = f"{_BASE_URL}/me/playlists"

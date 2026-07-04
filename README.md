@@ -9,6 +9,7 @@ A personal Spotify library browser and analyser.
 - Lyrics via [LRCLib](https://lrclib.net/) → [Genius](https://genius.com/) fallback chain
 - Mood timeline and genre analytics with Chart.js visualisation
 - Mashup partner suggestions (KNN over audio features + lyric embeddings)
+- Save any non-library track (e.g. a mashup suggestion) to your Spotify library in one click from its detail modal — runs the full ingestion pipeline in the background (audio features → lyrics → tags) with live per-stage progress
 - Mashup tab: compare any two library tracks side by side with a compatibility score (0–100), per-feature diffs, and hover notes based on harmonic rules
 - Background sync jobs with live progress panel in the UI
 - LLM-generated tags per track across five axes — mood, theme, scene, style, and tempo feel — with confidence scores (via OpenRouter)
@@ -59,6 +60,11 @@ Add `http://localhost:8000/spotify/callback/` to the **Redirect URIs** list in y
 2. Visit [http://localhost:8000/spotify/login/](http://localhost:8000/spotify/login/) and approve access.
 
 Saloon stores a refresh token — you never need to repeat this.
+
+> **Already logged in before the "Save to Library" feature?** Saving a track needs the
+> `user-library-modify` scope, which older tokens were minted without. Visit
+> [/spotify/login/](http://localhost:8000/spotify/login/) once more to re-grant. Until you do,
+> the Save button surfaces a "Re-authenticate with Spotify" prompt instead of failing silently.
 
 **Sync saved tracks:**
 ```bash

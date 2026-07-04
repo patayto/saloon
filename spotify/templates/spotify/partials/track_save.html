@@ -1,0 +1,49 @@
+{% if done %}
+  <div
+    hx-get="{% url 'track_detail' track_id %}"
+    hx-trigger="load"
+    hx-target="#track-modal-content"
+    hx-swap="innerHTML"
+    class="inline-flex items-center gap-2 text-sm text-green-400"
+  >
+    <svg class="w-4 h-4 shrink-0" viewBox="0 0 20 20" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+      <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+    </svg>
+    <span class="text-xs">Saved — refreshing…</span>
+  </div>
+
+{% elif job_id %}
+  <div
+    hx-get="{% url 'save_track_status' track_id job_id %}"
+    hx-trigger="every 2s"
+    hx-target="#track-save-status"
+    hx-swap="innerHTML"
+    class="inline-flex items-center gap-2 text-sm text-gray-400"
+  >
+    <svg class="w-4 h-4 animate-spin shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+    </svg>
+    <span class="text-xs">{{ status_label|default:"Saving to library…" }}</span>
+  </div>
+
+{% elif error %}
+  <div class="rounded-lg bg-gray-800/50 border border-gray-700 px-4 py-3 text-sm text-gray-400">
+    {{ error }}
+    <a href="/spotify/login/" class="ml-1 text-green-500 hover:text-green-400">Re-authenticate with Spotify</a>
+  </div>
+
+{% else %}
+  <button
+    hx-post="{% url 'save_track' track_id %}"
+    hx-target="#track-save-status"
+    hx-swap="innerHTML"
+    hx-on:htmx:before-request="this.disabled=true"
+    class="inline-flex items-center gap-2 bg-green-700 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded font-medium text-sm transition-colors"
+  >
+    <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+      <path d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z"/>
+    </svg>
+    Save to Library
+  </button>
+{% endif %}

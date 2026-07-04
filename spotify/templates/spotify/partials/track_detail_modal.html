@@ -95,6 +95,13 @@
     </div>
     {% endif %}
 
+    <!-- Save to Library (unsaved tracks only) -->
+    {% if not saved %}
+    <div id="track-save-status" class="col-span-2 pt-1">
+      {% include "spotify/partials/track_save.html" with track_id=track.id %}
+    </div>
+    {% endif %}
+
   </div>
 
   <!-- Tags section -->
