@@ -158,6 +158,10 @@ _cooldowns: dict[
     str, float
 ] = {}  # model → unix ts; ponytail: unlocked dict, atomic under GIL
 
+
+class TransientAPIError(Exception):
+    """2xx response whose body is an error payload instead of a completion."""
+
 _SYSTEM_PROMPT = (
     "You are a music analyst. Given a track's metadata, audio features, and lyrics, "
     "return a JSON object with exactly five keys: mood, theme, scene, style, tempo_feel. "
@@ -229,13 +233,13 @@ def _call_api(user_message: str, model: str, api_url: str) -> dict:
     if resp.status_code == 404:
         raise CommandError(f"Model '{model}' not found.")
     resp.raise_for_status()
-    try:
-        content = resp.json()["choices"][0]["message"]["content"]
-        logger.debug("API raw response: %s", content)
-        return json.loads(content)
-    except KeyError as ke:
-        logger.error(f"Invalid response, failed to find '{str(ke)}' key: {resp.json()}")
-        raise ke
+    body = resp.json()
+    if "choices" not in body:
+        # OpenRouter (esp. :free models) can return 200 with {"error": {...}}
+        raise TransientAPIError(str(body.get("error") or body))
+    content = body["choices"][0]["message"]["content"]
+    logger.debug("API raw response: %s", content)
+    return json.loads(content)
 
 
 def _call_api_with_retry(
@@ -280,6 +284,14 @@ def _call_api_with_retry(
                     )
                 else:
                     raise
+            except TransientAPIError as e:
+                _cooldowns[model] = time.time() + _COOLDOWN_5XX
+                logger.warning(
+                    "Model %s: error body in 200 (%s) — cooldown %ds, next model",
+                    model,
+                    e,
+                    _COOLDOWN_5XX,
+                )
         if round_ < max_rounds:
             wait = min(_cooldowns.get(m, 0) for m in models) - time.time()
             if wait > 120:
