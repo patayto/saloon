@@ -6,6 +6,7 @@ fetch audio features and lyrics for newly encountered tracks.
 """
 import logging
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 
 import requests
 
@@ -23,6 +24,7 @@ def enrich_tracks(
     compute_sentiment: bool = False,
     compute_tags: bool = False,
     stage_cb=None,
+    progress_cb=None,
 ) -> dict:
     """Fetch audio features and lyrics for the given track IDs.
 
@@ -39,6 +41,8 @@ def enrich_tracks(
             # sync_playlists (one line each) if bulk tagging is ever wanted.
         stage_cb: Optional callable(stage: str) invoked before each phase, for
             live progress reporting (e.g. the save-to-library UI spinner).
+        progress_cb: Optional callable(done: int, total: int) reporting combined
+            audio-features + lyrics progress (total = 2 * len(track_ids)).
 
     Returns:
         {
@@ -61,10 +65,24 @@ def enrich_tracks(
         if stage_cb:
             stage_cb(label)
 
-    _stage("Fetching audio features")
-    audio_features = _enrich_audio_features(track_ids)
-    _stage("Fetching lyrics")
-    lyrics = _enrich_lyrics(track_ids)
+    # Audio features and lyrics hit independent APIs — run them in parallel so
+    # a ReccoBeats rate-limit backoff doesn't stall the lyrics fetch (and vice
+    # versa). Combined progress: each sub-phase covers len(track_ids) units.
+    done_by_phase = {"af": 0, "lyrics": 0}
+
+    def _phase_progress(phase):
+        def cb(done, total):
+            done_by_phase[phase] = done
+            if progress_cb:
+                progress_cb(sum(done_by_phase.values()), 2 * len(track_ids))
+        return cb
+
+    _stage("Fetching audio features & lyrics")
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        af_future = executor.submit(_enrich_audio_features, track_ids, _phase_progress("af"))
+        lyrics_future = executor.submit(_enrich_lyrics, track_ids, _phase_progress("lyrics"))
+        audio_features = af_future.result()
+        lyrics = lyrics_future.result()
     result = {"audio_features": audio_features, "lyrics": lyrics}
 
     try:

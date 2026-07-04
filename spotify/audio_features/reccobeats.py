@@ -27,6 +27,8 @@ logger = logging.getLogger(__name__)
 _BASE_URL = "https://api.reccobeats.com/v1"
 _BATCH_SIZE = 40
 _INTER_BATCH_DELAY = 2.0  # seconds between requests
+_MAX_429_RETRIES = 3
+_BACKOFF_BASE = 5.0  # seconds; doubles per attempt: 5, 10, 20
 _SPOTIFY_HREF_RE = re.compile(r"https://open\.spotify\.com/track/([A-Za-z0-9]+)")
 
 
@@ -138,20 +140,37 @@ class ReccoBeatsProvider:
         The endpoint returns 9 features; key, mode, and time_signature are not
         provided and default to 0, 0, and 4 respectively.
 
+        Retries with exponential backoff on 429 (honouring Retry-After when
+        present); gives up on this track after _MAX_429_RETRIES so one
+        rate-limited track never stalls the rest of a run for long.
+
         Returns None if the request fails or the response cannot be parsed.
         """
         path = Path(file_path)
         logger.info("ReccoBeats analysis: uploading %s for track %s", path.name, track_id)
 
         try:
-            with path.open("rb") as f:
-                resp = requests.post(
-                    f"{_BASE_URL}/analysis/audio-features",
-                    files={"audioFile": (path.name, f, "audio/mpeg")},
-                    timeout=self._timeout,
-                )
-            resp.raise_for_status()
-            item = resp.json()
+            for attempt in range(_MAX_429_RETRIES + 1):
+                with path.open("rb") as f:
+                    resp = requests.post(
+                        f"{_BASE_URL}/analysis/audio-features",
+                        files={"audioFile": (path.name, f, "audio/mpeg")},
+                        timeout=self._timeout,
+                    )
+                if resp.status_code == 429 and attempt < _MAX_429_RETRIES:
+                    try:
+                        delay = float(resp.headers.get("Retry-After", ""))
+                    except ValueError:
+                        delay = _BACKOFF_BASE * 2**attempt
+                    logger.info(
+                        "ReccoBeats analysis: 429 for track %s — retrying in %.0fs (attempt %d/%d)",
+                        track_id, delay, attempt + 1, _MAX_429_RETRIES,
+                    )
+                    time.sleep(delay)
+                    continue
+                resp.raise_for_status()
+                item = resp.json()
+                break
         except requests.exceptions.RequestException as exc:
             logger.warning("ReccoBeats analysis failed for track %s: %s", track_id, exc)
             return None

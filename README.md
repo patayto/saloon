@@ -12,6 +12,7 @@ A personal Spotify library browser and analyser.
 - Save any non-library track (e.g. a mashup suggestion) to your Spotify library in one click from its detail modal — runs the full ingestion pipeline in the background (audio features → lyrics → tags) with live per-stage progress
 - Mashup tab: compare any two library tracks side by side with a compatibility score (0–100), per-feature diffs, and hover notes based on harmonic rules
 - Background sync jobs with live progress panel in the UI
+- Newly ingested tracks are enriched automatically — audio features and lyrics are fetched in parallel, with exponential backoff on rate limits (a throttled track is skipped, never the whole run)
 - LLM-generated tags per track across five axes — mood, theme, scene, style, and tempo feel — with confidence scores (via OpenRouter)
 - Filter the library by any tag (e.g. mood:melancholic)
 - Graph view: group nodes by tag axis to form clusters, or filter to a single tag value
@@ -61,10 +62,11 @@ Add `http://localhost:8000/spotify/callback/` to the **Redirect URIs** list in y
 
 Saloon stores a refresh token — you never need to repeat this.
 
-> **Already logged in before the "Save to Library" feature?** Saving a track needs the
-> `user-library-modify` scope, which older tokens were minted without. Visit
-> [/spotify/login/](http://localhost:8000/spotify/login/) once more to re-grant. Until you do,
-> the Save button surfaces a "Re-authenticate with Spotify" prompt instead of failing silently.
+> **Logged in with an older token?** Newer features need scopes older tokens were minted
+> without: saving a track needs `user-library-modify`, and syncing private/collaborative
+> playlists needs `playlist-read-private` + `playlist-read-collaborative` (without them,
+> Spotify silently returns only your public playlists). Visit
+> [/spotify/login/](http://localhost:8000/spotify/login/) once more to re-grant.
 
 **Sync saved tracks:**
 ```bash

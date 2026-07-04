@@ -852,14 +852,14 @@
         if (result.status === 'complete') {
           var stats = result.stats;
           var errorCount = stats.errors ? stats.errors.length : 0;
-          var msg = 'Sync complete: ' + stats.playlists + ' playlist' + (stats.playlists !== 1 ? 's' : '') +
-                    ', ' + stats.tracks + ' track' + (stats.tracks !== 1 ? 's' : '') +
+          var msg = 'Sync complete: ' + (stats.scanned || 0) + ' scanned, ' +
+                    (stats.new || 0) + ' new, ' + (stats.stale || 0) + ' stale' +
                     (errorCount ? ' (' + errorCount + ' error' + (errorCount !== 1 ? 's' : '') + ')' : '');
           showToast({ message: msg, type: errorCount > 0 ? 'warning' : 'success', persistent: true,
             onClick: function() { showSyncSummary(stats); } });
         } else {
           showToast({ message: 'Sync failed — click for details', type: 'error', persistent: true,
-            onClick: function() { showSyncSummary({ playlists: 0, tracks: 0, errors: [{ type: 'sync', id: '', name: 'Sync error', playlist: '', error: result.error || 'Unknown error' }] }); } });
+            onClick: function() { showSyncSummary({ scanned: 0, new: 0, stale: 0, errors: [{ type: 'sync', id: '', name: 'Sync error', playlist: '', error: result.error || 'Unknown error' }] }); } });
         }
       };
     })
@@ -884,7 +884,7 @@
         '<ul class="space-y-2 text-sm max-h-60 overflow-y-auto pr-1">' + errorRows + '</ul></div>'
       : '';
 
-    var successRate = stats.playlists > 0 || stats.tracks > 0
+    var successRate = stats.scanned > 0
       ? '<p class="text-xs text-gray-500 mt-4">' + (errors.length === 0 ? 'All items synced successfully.' : errors.length + ' item' + (errors.length !== 1 ? 's' : '') + ' skipped due to errors.') + '</p>'
       : '';
 
@@ -893,9 +893,10 @@
         '<h2 class="text-base font-semibold">Sync Summary</h2>' +
         '<button onclick="closeSyncSummary()" class="text-gray-400 hover:text-white text-xl leading-none">×</button>' +
       '</div>' +
-      '<dl class="grid grid-cols-3 gap-3 text-sm">' +
-        '<div class="bg-gray-800 rounded-lg p-3 text-center"><dt class="text-gray-400 text-xs mb-1">Playlists</dt><dd class="text-2xl font-bold text-green-400">' + stats.playlists + '</dd></div>' +
-        '<div class="bg-gray-800 rounded-lg p-3 text-center"><dt class="text-gray-400 text-xs mb-1">Tracks</dt><dd class="text-2xl font-bold text-green-400">' + stats.tracks + '</dd></div>' +
+      '<dl class="grid grid-cols-4 gap-3 text-sm">' +
+        '<div class="bg-gray-800 rounded-lg p-3 text-center"><dt class="text-gray-400 text-xs mb-1">Scanned</dt><dd class="text-2xl font-bold text-green-400">' + (stats.scanned || 0) + '</dd></div>' +
+        '<div class="bg-gray-800 rounded-lg p-3 text-center"><dt class="text-gray-400 text-xs mb-1">New</dt><dd class="text-2xl font-bold text-green-400">' + (stats.new || 0) + '</dd></div>' +
+        '<div class="bg-gray-800 rounded-lg p-3 text-center"><dt class="text-gray-400 text-xs mb-1">Stale</dt><dd class="text-2xl font-bold ' + ((stats.stale || 0) > 0 ? 'text-amber-400' : 'text-gray-500') + '">' + (stats.stale || 0) + '</dd></div>' +
         '<div class="bg-gray-800 rounded-lg p-3 text-center"><dt class="text-gray-400 text-xs mb-1">Errors</dt><dd class="text-2xl font-bold ' + (errors.length > 0 ? 'text-red-400' : 'text-gray-500') + '">' + errors.length + '</dd></div>' +
       '</dl>' +
       errorSection +

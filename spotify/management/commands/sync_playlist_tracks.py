@@ -35,7 +35,7 @@ def run_sync(playlist_id: str, progress_cb=None) -> dict:
             "enrichment": {"audio_features": {...}, "lyrics": {...}},
         }
 
-    progress_cb(done: int, total: int) is called periodically during the API fetch.
+    progress_cb(done: int, total: int) is called during enrichment of added tracks.
     """
     playlist = Playlist.objects.get(id=playlist_id)
     errors: list[dict] = []
@@ -130,7 +130,7 @@ def run_sync(playlist_id: str, progress_cb=None) -> dict:
     # ------------------------------------------------------------------
     enrichment: dict = {}
     if added_ids:
-        enrichment = enrich_tracks(list(added_ids))
+        enrichment = enrich_tracks(list(added_ids), progress_cb=progress_cb)
 
     # ------------------------------------------------------------------
     # Step 7: Mark playlist as fresh and update created_at estimate.

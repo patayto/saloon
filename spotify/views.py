@@ -31,7 +31,7 @@ from spotify.models import (
 )
 
 AUTHORIZE_URL = "https://accounts.spotify.com/authorize"
-SCOPE = "user-library-read user-library-modify user-read-private"
+SCOPE = "user-library-read user-library-modify user-read-private playlist-read-private playlist-read-collaborative"
 
 # In-memory job store for background playlist sync tasks.
 # Single-user dev tool; no cleanup needed.
@@ -739,11 +739,14 @@ def sync_single_playlist_view(request: HttpRequest, playlist_id: str) -> HttpRes
         "progress": {"done": 0, "total": 0},
     }
 
+    def _progress_cb(done: int, total: int) -> None:
+        _sync_jobs[job_id]["progress"] = {"done": done, "total": total}
+
     def _run():
         try:
             from spotify.management.commands.sync_playlist_tracks import run_sync
 
-            stats = run_sync(playlist_id)
+            stats = run_sync(playlist_id, progress_cb=_progress_cb)
             _sync_jobs[job_id].update({"status": "complete", "stats": stats})
         except Exception:
             _sync_jobs[job_id].update(
