@@ -19,6 +19,7 @@ urlpatterns = [
     path("tracks/<str:track_id>/save/status/<str:job_id>/", spotify_views.save_track_status, name="save_track_status"),
     path("lyrics/sync/", spotify_views.sync_lyrics_view, name="sync_lyrics"),
     path("lyrics/sync/status/<str:job_id>/", spotify_views.sync_lyrics_status, name="sync_lyrics_status"),
+    path("sync/active/", spotify_views.active_sync_jobs, name="active_sync_jobs"),
     path("sync/", spotify_views.sync_library, name="sync_library"),
     path("sync/status/<str:job_id>/", spotify_views.sync_library_status, name="sync_library_status"),
     path("audio-features/", spotify_views.audio_features_table, name="audio_features_table"),

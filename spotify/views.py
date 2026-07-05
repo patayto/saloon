@@ -14,6 +14,7 @@ from django.core.paginator import Paginator
 from django.db.models import F, Q
 from django.http import HttpRequest, HttpResponse, HttpResponseNotAllowed, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 
 from analysis.management.commands.compute_track_tags import ALLOWED as TAG_ALLOWED
 from analysis.models import TrackTags
@@ -585,6 +586,7 @@ def sync_lyrics_view(request: HttpRequest) -> HttpResponse:
         "status": "running",
         "label": "Lyrics Sync",
         "started_at": time.time(),
+        "status_url": reverse("sync_lyrics_status", kwargs={"job_id": job_id}),
         "progress": {"done": 0, "total": 0},
     }
 
@@ -746,6 +748,7 @@ def sync_playlists_view(request: HttpRequest) -> HttpResponse:
         "status": "running",
         "label": "Playlist Sync",
         "started_at": time.time(),
+        "status_url": reverse("sync_playlists_status", kwargs={"job_id": job_id}),
         "progress": {"done": 0, "total": 0},
     }
 
@@ -848,6 +851,7 @@ def sync_selected_playlists_view(request: HttpRequest) -> HttpResponse:
         "status": "running",
         "label": f"Playlist Tracks Sync ({len(playlist_ids)})",
         "started_at": time.time(),
+        "status_url": reverse("sync_playlists_status", kwargs={"job_id": job_id}),
         "progress": {"done": 0, "total": len(playlist_ids)},
     }
 
@@ -908,6 +912,7 @@ def sync_single_playlist_view(request: HttpRequest, playlist_id: str) -> HttpRes
         "status": "running",
         "label": f"Sync: {playlist.name}",
         "started_at": time.time(),
+        "status_url": reverse("sync_single_playlist_status", kwargs={"playlist_id": playlist_id, "job_id": job_id}),
         "progress": {"done": 0, "total": 0},
     }
 
@@ -963,6 +968,7 @@ def sync_playlist_audio_features_view(
         "status": "running",
         "label": f"Audio Features: {playlist.name}",
         "started_at": time.time(),
+        "status_url": reverse("sync_playlist_audio_features_status", kwargs={"playlist_id": playlist_id, "job_id": job_id}),
         "progress": {"done": 0, "total": len(track_ids)},
     }
 
@@ -1016,6 +1022,7 @@ def sync_playlist_lyrics_view(request: HttpRequest, playlist_id: str) -> HttpRes
         "status": "running",
         "label": f"Lyrics: {playlist.name}",
         "started_at": time.time(),
+        "status_url": reverse("sync_playlist_lyrics_status", kwargs={"playlist_id": playlist_id, "job_id": job_id}),
         "progress": {"done": 0, "total": len(track_ids)},
     }
 
@@ -1062,6 +1069,7 @@ def sync_audio_features_view(request: HttpRequest) -> HttpResponse:
         "status": "running",
         "label": "Audio Features Sync",
         "started_at": time.time(),
+        "status_url": reverse("sync_audio_features_status", kwargs={"job_id": job_id}),
         "progress": {"done": 0, "total": 0},
     }
 
@@ -1094,6 +1102,16 @@ def sync_audio_features_status(request: HttpRequest, job_id: str) -> HttpRespons
     return JsonResponse(job)
 
 
+def active_sync_jobs(request: HttpRequest) -> JsonResponse:
+    """Return currently running panel-visible sync jobs for page-load recovery."""
+    jobs = [
+        {"job_id": jid, "label": j["label"], "status_url": j["status_url"], "started_at": j.get("started_at")}
+        for jid, j in _sync_jobs.items()
+        if j.get("status") == "running" and "label" in j and "status_url" in j
+    ]
+    return JsonResponse({"jobs": jobs})
+
+
 def sync_library(request: HttpRequest) -> HttpResponse:
     """Start a background library sync and return the job ID immediately."""
     if request.method != "POST":
@@ -1104,6 +1122,7 @@ def sync_library(request: HttpRequest) -> HttpResponse:
         "status": "running",
         "label": "Library Sync",
         "started_at": time.time(),
+        "status_url": reverse("sync_library_status", kwargs={"job_id": job_id}),
         "progress": {"done": 0, "total": 0},
     }
 

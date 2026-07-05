@@ -623,12 +623,12 @@
     }
   }
 
-  function registerJob(jobId, label, statusUrl) {
+  function registerJob(jobId, label, statusUrl, startedAt) {
     _jobs[jobId] = {
       label: label,
       statusUrl: statusUrl,
       status: 'running',
-      startedAt: Date.now() / 1000,
+      startedAt: startedAt || (Date.now() / 1000),
       progress: { done: 0, total: 0 },
       history: [],
     };
@@ -637,6 +637,16 @@
     _renderJobEntry(jobId);
     _pollJob(jobId);
   }
+
+  // Re-attach to any jobs still running from before a page refresh
+  fetch('/sync/active/')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      data.jobs.forEach(function(j) {
+        registerJob(j.job_id, j.label, j.status_url, j.started_at);
+      });
+    })
+    .catch(function() {}); // silent — best effort
 
   function updateJobEntry(jobId, data) {
     var job = _jobs[jobId];
