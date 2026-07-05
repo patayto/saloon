@@ -23,7 +23,7 @@ from spotify.pipeline import enrich_tracks
 logger = logging.getLogger(__name__)
 
 
-def run_sync(playlist_id: str, progress_cb=None) -> dict:
+def run_sync(playlist_id: str, progress_cb=None, stage_cb=None) -> dict:
     """
     Delta-sync tracks for one playlist. Returns::
 
@@ -36,15 +36,21 @@ def run_sync(playlist_id: str, progress_cb=None) -> dict:
         }
 
     progress_cb(done: int, total: int) is called during enrichment of added tracks.
+    stage_cb(stage: str) is called before each major step for UI progress labels.
     """
     playlist = Playlist.objects.get(id=playlist_id)
     errors: list[dict] = []
+
+    def _stage(label):
+        if stage_cb:
+            stage_cb(label)
 
     # ------------------------------------------------------------------
     # Step 1: Fetch lightweight track list from Spotify (IDs + positions).
     # We enumerate to assign positions because the API returns tracks in
     # order and the lightweight fields don't include a position field.
     # ------------------------------------------------------------------
+    _stage("Fetching tracks from Spotify")
     api_tracks: dict[str, dict] = {}  # spotify_track_id → {position, added_at, added_by}
     position = 0
     for item in get_playlist_track_ids(playlist_id):
@@ -79,12 +85,14 @@ def run_sync(playlist_id: str, progress_cb=None) -> dict:
     # Step 3: Remove tracks that are no longer in the playlist.
     # ------------------------------------------------------------------
     if removed_ids:
+        _stage(f"Removing {len(removed_ids)} track{'s' if len(removed_ids) != 1 else ''}")
         PlaylistTrack.objects.filter(playlist=playlist, spotify_track_id__in=removed_ids).delete()
 
     # ------------------------------------------------------------------
     # Step 4: Fetch full metadata for new tracks and create PlaylistTrack rows.
     # ------------------------------------------------------------------
     if added_ids:
+        _stage(f"Adding {len(added_ids)} track{'s' if len(added_ids) != 1 else ''}")
         track_objects = get_tracks_batch(list(added_ids))
         for track_data in track_objects:
             tid = track_data.get("id")
@@ -111,6 +119,7 @@ def run_sync(playlist_id: str, progress_cb=None) -> dict:
     # ------------------------------------------------------------------
     # Step 5: Update positions for tracks that moved.
     # ------------------------------------------------------------------
+    _stage("Updating positions")
     to_update = []
     for pt in PlaylistTrack.objects.filter(playlist=playlist).exclude(
         spotify_track_id__in=added_ids  # newly created — already at correct position
@@ -130,7 +139,7 @@ def run_sync(playlist_id: str, progress_cb=None) -> dict:
     # ------------------------------------------------------------------
     enrichment: dict = {}
     if added_ids:
-        enrichment = enrich_tracks(list(added_ids), progress_cb=progress_cb)
+        enrichment = enrich_tracks(list(added_ids), progress_cb=progress_cb, stage_cb=stage_cb)
 
     # ------------------------------------------------------------------
     # Step 7: Mark playlist as fresh and update created_at estimate.

@@ -345,7 +345,11 @@ def fetch_track_tags(request: HttpRequest, track_id: str) -> HttpResponse:
 
     from analysis.management.commands.compute_track_tags import (
         DEFAULT_MODEL as _TAG_MODEL,
+    )
+    from analysis.management.commands.compute_track_tags import (
         FREE_MODELS,
+    )
+    from analysis.management.commands.compute_track_tags import (
         run_sync as _tag_sync,
     )
 
@@ -359,19 +363,33 @@ def fetch_track_tags(request: HttpRequest, track_id: str) -> HttpResponse:
         "attempt": 1,
     }
 
-    def _attempt_cb(model: str, model_idx: int, total_models: int, attempt: int) -> None:
+    def _attempt_cb(
+        model: str, model_idx: int, total_models: int, attempt: int
+    ) -> None:
         _sync_jobs[job_id].update(
-            {"model": _model_short(model), "model_idx": model_idx, "total_models": total_models, "attempt": attempt}
+            {
+                "model": _model_short(model),
+                "model_idx": model_idx,
+                "total_models": total_models,
+                "attempt": attempt,
+            }
         )
 
     def _run():
         try:
             TrackTags.objects.filter(track_id=track_id, model_name=_TAG_MODEL).delete()
-            _tag_sync(model=_TAG_MODEL, track_ids=[track_id], fallback_models=FREE_MODELS, attempt_cb=_attempt_cb)
+            _tag_sync(
+                model=_TAG_MODEL,
+                track_ids=[track_id],
+                fallback_models=FREE_MODELS,
+                attempt_cb=_attempt_cb,
+            )
             _sync_jobs[job_id]["status"] = "complete"
         except Exception:
             logger.exception("fetch_track_tags failed for track %s", track_id)
-            _sync_jobs[job_id].update({"status": "error", "error": traceback.format_exc()})
+            _sync_jobs[job_id].update(
+                {"status": "error", "error": traceback.format_exc()}
+            )
 
     threading.Thread(target=_run, daemon=True).start()
 
@@ -386,11 +404,17 @@ def fetch_track_tags(request: HttpRequest, track_id: str) -> HttpResponse:
     )
 
 
-def fetch_track_tags_status(request: HttpRequest, track_id: str, job_id: str) -> HttpResponse:
+def fetch_track_tags_status(
+    request: HttpRequest, track_id: str, job_id: str
+) -> HttpResponse:
     job = _sync_jobs.get(job_id)
     if job is None or job["status"] == "error":
         error = (job or {}).get("error", "Job not found (server may have restarted).")
-        return render(request, "spotify/partials/track_tags.html", {"track_id": track_id, "error": error})
+        return render(
+            request,
+            "spotify/partials/track_tags.html",
+            {"track_id": track_id, "error": error},
+        )
     if job["status"] == "running":
         label = f"Trying {job['model']} · {job['model_idx']}/{job['total_models']} · attempt {job['attempt']}"
         return render(
@@ -399,7 +423,11 @@ def fetch_track_tags_status(request: HttpRequest, track_id: str, job_id: str) ->
             {"track_id": track_id, "job_id": job_id, "status_label": label},
         )
     tags = TrackTags.objects.filter(track_id=track_id).first()
-    return render(request, "spotify/partials/track_tags.html", {"tags": tags, "track_id": track_id})
+    return render(
+        request,
+        "spotify/partials/track_tags.html",
+        {"tags": tags, "track_id": track_id},
+    )
 
 
 def save_track_to_library(request: HttpRequest, track_id: str) -> HttpResponse:
@@ -415,10 +443,16 @@ def save_track_to_library(request: HttpRequest, track_id: str) -> HttpResponse:
     except http_requests.HTTPError as exc:
         status = exc.response.status_code if exc.response is not None else None
         if status in (401, 403):
-            error = "Re-authenticate with Spotify to enable saving (needs library-modify)."
+            error = (
+                "Re-authenticate with Spotify to enable saving (needs library-modify)."
+            )
         else:
             error = f"Spotify rejected the save request (HTTP {status})."
-        return render(request, "spotify/partials/track_save.html", {"track_id": track_id, "error": error})
+        return render(
+            request,
+            "spotify/partials/track_save.html",
+            {"track_id": track_id, "error": error},
+        )
 
     job_id = str(uuid.uuid4())
     _sync_jobs[job_id] = {"status": "running", "stage": "Saved — enriching…"}
@@ -439,30 +473,50 @@ def save_track_to_library(request: HttpRequest, track_id: str) -> HttpResponse:
             _sync_jobs[job_id]["status"] = "complete"
         except Exception:
             logger.exception("save_track_to_library enrichment failed for %s", track_id)
-            _sync_jobs[job_id].update({"status": "error", "error": traceback.format_exc()})
+            _sync_jobs[job_id].update(
+                {"status": "error", "error": traceback.format_exc()}
+            )
 
     threading.Thread(target=_run, daemon=True).start()
 
     return render(
         request,
         "spotify/partials/track_save.html",
-        {"track_id": track_id, "job_id": job_id, "status_label": _sync_jobs[job_id]["stage"]},
+        {
+            "track_id": track_id,
+            "job_id": job_id,
+            "status_label": _sync_jobs[job_id]["stage"],
+        },
     )
 
 
 def save_track_status(request: HttpRequest, track_id: str, job_id: str) -> HttpResponse:
     job = _sync_jobs.get(job_id)
     if job is None or job["status"] == "error":
-        error = (job or {}).get("error", "Save job not found (server may have restarted).")
-        return render(request, "spotify/partials/track_save.html", {"track_id": track_id, "error": error})
+        error = (job or {}).get(
+            "error", "Save job not found (server may have restarted)."
+        )
+        return render(
+            request,
+            "spotify/partials/track_save.html",
+            {"track_id": track_id, "error": error},
+        )
     if job["status"] == "running":
         return render(
             request,
             "spotify/partials/track_save.html",
-            {"track_id": track_id, "job_id": job_id, "status_label": job.get("stage", "Saving to library…")},
+            {
+                "track_id": track_id,
+                "job_id": job_id,
+                "status_label": job.get("stage", "Saving to library…"),
+            },
         )
     # complete → tell the partial to refresh the whole modal
-    return render(request, "spotify/partials/track_save.html", {"track_id": track_id, "done": True})
+    return render(
+        request,
+        "spotify/partials/track_save.html",
+        {"track_id": track_id, "done": True},
+    )
 
 
 def track_mashup_candidates(request: HttpRequest, track_id: str) -> HttpResponse:
@@ -578,13 +632,13 @@ PLAYLIST_DEFAULT_DIR = {
 
 def playlists_grid(request: HttpRequest) -> HttpResponse:
     q = request.GET.get("q", "").strip()
-    sort = request.GET.get("sort", "name")
-    direction = request.GET.get("dir", "asc")
+    sort = request.GET.get("sort", "created")
+    direction = request.GET.get("dir", "desc")
     year = request.GET.get("year", "").strip()
     stale = request.GET.get("stale", "").strip()
 
     if sort not in PLAYLIST_SORT_FIELDS:
-        sort = "name"
+        sort = "created"
     if direction not in ("asc", "desc"):
         direction = "asc"
     # Reject anything that isn't a plain 4-digit number
@@ -702,7 +756,9 @@ def sync_playlists_view(request: HttpRequest) -> HttpResponse:
         try:
             from spotify.management.commands.sync_playlists import run_sync
 
-            stats = run_sync(progress_cb=_progress_cb)
+            # Metadata-only for new playlists — the user picks which ones to
+            # track-sync from the preview modal.
+            stats = run_sync(progress_cb=_progress_cb, sync_new_tracks=False)
             _sync_jobs[job_id].update({"status": "complete", "stats": stats})
         except Exception:
             _sync_jobs[job_id].update(
@@ -722,6 +778,122 @@ def sync_playlists_status(request: HttpRequest, job_id: str) -> HttpResponse:
     if job is None:
         return JsonResponse({"status": "not_found"}, status=404)
     return JsonResponse(job)
+
+
+def playlist_sync_preview(request: HttpRequest) -> HttpResponse:
+    """Playlists that genuinely need a track sync (and are not ignored).
+
+    Two cases:
+    - No PlaylistTrack rows at all  → brand-new playlist, never synced
+    - is_stale=True                 → snapshot changed since last sync
+
+    Returns 204 when there is nothing pending so the frontend skips the modal.
+    """
+    from django.db.models import Count, Q
+
+    pending_qs = (
+        Playlist.objects.exclude(ignored=True)
+        .filter(Q(playlist_tracks__isnull=True) | Q(is_stale=True))
+        .distinct()
+        .order_by("name")
+    )
+    if not pending_qs.exists():
+        return HttpResponse(status=204)
+
+    ids = list(pending_qs.values_list("id", flat=True))
+    local_counts = dict(
+        PlaylistTrack.objects.filter(playlist_id__in=ids)
+        .values("playlist_id")
+        .annotate(n=Count("id"))
+        .values_list("playlist_id", "n")
+    )
+    rows = [
+        {
+            "playlist": p,
+            "local": local_counts.get(p.id, 0),
+            "spotify": p.total_tracks,
+            "net": p.total_tracks - local_counts.get(p.id, 0),
+        }
+        for p in pending_qs
+    ]
+    total_net = sum(r["net"] for r in rows)
+    return render(
+        request,
+        "spotify/partials/playlist_sync_preview.html",
+        {"rows": rows, "total_net": total_net},
+    )
+
+
+def ignore_playlist(request: HttpRequest, playlist_id: str) -> HttpResponse:
+    """Permanently exclude a playlist from future sync previews."""
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    playlist = get_object_or_404(Playlist, id=playlist_id)
+    playlist.ignored = True
+    playlist.save(update_fields=["ignored"])
+    return HttpResponse(status=204)
+
+
+def sync_selected_playlists_view(request: HttpRequest) -> HttpResponse:
+    """Start a background track sync for the playlists selected in the preview modal."""
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+
+    playlist_ids = request.POST.getlist("playlist_ids")
+    if not playlist_ids:
+        return JsonResponse({"error": "no playlists selected"}, status=400)
+
+    job_id = str(uuid.uuid4())
+    _sync_jobs[job_id] = {
+        "status": "running",
+        "label": f"Playlist Tracks Sync ({len(playlist_ids)})",
+        "started_at": time.time(),
+        "progress": {"done": 0, "total": len(playlist_ids)},
+    }
+
+    def _run():
+        from spotify.management.commands.sync_playlist_tracks import run_sync
+
+        names = {
+            p.id: p.name
+            for p in Playlist.objects.filter(id__in=playlist_ids).only("id", "name")
+        }
+        stats = {"synced": 0, "added": 0, "errors": []}
+        for i, pid in enumerate(playlist_ids):
+            name = names.get(pid, pid)
+            _sync_jobs[job_id]["current"] = {
+                "playlist_name": name,
+                "playlist_index": i + 1,
+                "stage": "Starting…",
+                "track_progress": {"done": 0, "total": 0},
+            }
+
+            def _stage_cb(stage, _jid=job_id):
+                _sync_jobs[_jid]["current"]["stage"] = stage
+
+            def _track_progress_cb(done, total, _jid=job_id):
+                _sync_jobs[_jid]["current"]["track_progress"] = {"done": done, "total": total}
+
+            try:
+                result = run_sync(pid, progress_cb=_track_progress_cb, stage_cb=_stage_cb)
+                stats["synced"] += 1
+                stats["added"] += result.get("added", 0)
+                stats["errors"].extend(result.get("errors", []))
+            except Exception as exc:
+                stats["errors"].append(
+                    {"type": "playlist", "id": pid, "name": name, "error": str(exc)}
+                )
+                logger.error(
+                    "Background sync_playlist_tracks failed for %s:\n%s",
+                    pid,
+                    traceback.format_exc(),
+                )
+            _sync_jobs[job_id]["progress"] = {"done": i + 1, "total": len(playlist_ids)}
+        _sync_jobs[job_id].pop("current", None)
+        _sync_jobs[job_id].update({"status": "complete", "stats": stats})
+
+    threading.Thread(target=_run, daemon=True).start()
+    return JsonResponse({"job_id": job_id})
 
 
 def sync_single_playlist_view(request: HttpRequest, playlist_id: str) -> HttpResponse:

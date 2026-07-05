@@ -22,7 +22,7 @@ from spotify.management.commands.sync_playlist_tracks import run_sync as run_tra
 logger = logging.getLogger(__name__)
 
 
-def run_sync(progress_cb=None) -> dict:
+def run_sync(progress_cb=None, sync_new_tracks=True) -> dict:
     """
     Scan all Spotify playlists and sync metadata / staleness state.
 
@@ -38,6 +38,10 @@ def run_sync(progress_cb=None) -> dict:
 
     progress_cb(done: int, total: int) is called after each playlist is processed.
     total is 0 (unknown) until all playlists are fetched.
+
+    When ``sync_new_tracks`` is False, new playlists get a metadata-only row
+    (``tracks_synced_at`` stays null) so the user can pick which ones to
+    track-sync from the preview modal.
     """
     scanned = 0
     new_count = 0
@@ -54,19 +58,24 @@ def run_sync(progress_cb=None) -> dict:
             if existing is None:
                 # New playlist — create it and sync tracks straight away.
                 playlist = upsert_playlist(playlist_data)
-                logger.info("New playlist %s (%s) — syncing tracks", playlist_id, playlist_name)
-                try:
-                    run_track_sync(playlist_id)
-                except Exception as exc:
-                    logger.warning(
-                        "Track sync failed for new playlist %s: %s", playlist_id, exc
+                if sync_new_tracks:
+                    logger.info("New playlist %s (%s) — syncing tracks", playlist_id, playlist_name)
+                    try:
+                        run_track_sync(playlist_id)
+                    except Exception as exc:
+                        logger.warning(
+                            "Track sync failed for new playlist %s: %s", playlist_id, exc
+                        )
+                        errors.append({
+                            "type": "track_sync",
+                            "id": playlist_id,
+                            "name": playlist_name,
+                            "error": str(exc),
+                        })
+                else:
+                    logger.info(
+                        "New playlist %s (%s) — pending track sync", playlist_id, playlist_name
                     )
-                    errors.append({
-                        "type": "track_sync",
-                        "id": playlist_id,
-                        "name": playlist_name,
-                        "error": str(exc),
-                    })
                 new_count += 1
 
             elif existing.snapshot_id != (playlist_data.get("snapshot_id") or ""):

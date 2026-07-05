@@ -32,6 +32,28 @@
   </div>
 </div>
 
+<!-- Sync detail modal (click a sync-panel entry while running) -->
+<div
+  id="sync-detail-modal"
+  class="fixed inset-0 z-[200] hidden flex items-center justify-center p-4 bg-black/70"
+  onclick="if(event.target===this)closeSyncDetail()"
+>
+  <div id="sync-detail-content" class="bg-gray-900 border border-gray-800 rounded-xl w-full max-w-md shadow-2xl p-6">
+    <!-- populated by renderSyncDetail() -->
+  </div>
+</div>
+
+<!-- Playlist sync preview modal -->
+<div
+  id="playlist-preview-modal"
+  class="fixed inset-0 z-[150] hidden flex items-center justify-center p-4 bg-black/70"
+  onclick="if(event.target===this)closePlaylistPreview()"
+>
+  <div id="playlist-preview-content" class="bg-gray-900 border border-gray-800 rounded-xl w-full max-w-2xl max-h-[80vh] overflow-y-auto shadow-2xl p-6">
+    <!-- populated by openPlaylistPreview() -->
+  </div>
+</div>
+
 <!-- Track detail modal overlay -->
 <div
   id="track-modal"
@@ -584,11 +606,19 @@
 
     if (existing) {
       existing.innerHTML = html;
+      existing.onclick = job.status === 'running' ? function() { openSyncDetail(jobId); } : null;
+      existing.style.cursor = job.status === 'running' ? 'pointer' : '';
+      existing.title = job.status === 'running' ? 'Click for details' : '';
     } else {
       var entry = document.createElement('div');
       entry.id = entryId;
       entry.className = 'bg-gray-800 border border-gray-700 rounded-lg px-3 py-2';
       entry.innerHTML = html;
+      if (job.status === 'running') {
+        entry.onclick = function() { openSyncDetail(jobId); };
+        entry.style.cursor = 'pointer';
+        entry.title = 'Click for details';
+      }
       document.getElementById('sync-panel-body').appendChild(entry);
     }
   }
@@ -612,12 +642,14 @@
     var job = _jobs[jobId];
     if (!job) return;
     job.status = data.status;
+    job.current = data.current || null;
     if (data.progress) {
       job.progress = data.progress;
       job.history.push({ ts: Date.now() / 1000, done: data.progress.done });
     }
     _renderJobEntry(jobId);
     _updatePanelBadge();
+    if (_detailJobId === jobId) renderSyncDetail();
   }
 
   function _pollJob(jobId) {
@@ -857,6 +889,7 @@
                     (errorCount ? ' (' + errorCount + ' error' + (errorCount !== 1 ? 's' : '') + ')' : '');
           showToast({ message: msg, type: errorCount > 0 ? 'warning' : 'success', persistent: true,
             onClick: function() { showSyncSummary(stats); } });
+          openPlaylistPreview();
         } else {
           showToast({ message: 'Sync failed — click for details', type: 'error', persistent: true,
             onClick: function() { showSyncSummary({ scanned: 0, new: 0, stale: 0, errors: [{ type: 'sync', id: '', name: 'Sync error', playlist: '', error: result.error || 'Unknown error' }] }); } });
@@ -909,9 +942,173 @@
     document.getElementById('sync-summary-modal').classList.add('hidden');
   }
 
+  // ── Sync detail modal ────────────────────────────────────────────────────
+
+  var _detailJobId = null;
+
+  function openSyncDetail(jobId) {
+    _detailJobId = jobId;
+    renderSyncDetail();
+    document.getElementById('sync-detail-modal').classList.remove('hidden');
+  }
+
+  function closeSyncDetail() {
+    _detailJobId = null;
+    document.getElementById('sync-detail-modal').classList.add('hidden');
+  }
+
+  function renderSyncDetail() {
+    if (!_detailJobId) return;
+    var job = _jobs[_detailJobId];
+    if (!job) return;
+
+    var progress = job.progress || { done: 0, total: 0 };
+    var total = progress.total || 0;
+    var done = progress.done || 0;
+    var playlistPct = total > 0 ? Math.round(done / total * 100) : null;
+    var playlistBar = total > 0
+      ? '<div class="w-full bg-gray-700 rounded-full h-2 mt-1">' +
+          '<div class="bg-blue-500 h-2 rounded-full transition-all duration-500" style="width:' + playlistPct + '%"></div>' +
+        '</div>'
+      : '<div class="w-full bg-gray-700 rounded-full h-2 mt-1 overflow-hidden">' +
+          '<div class="h-2 rounded-full bg-blue-500 animate-pulse w-2/3"></div>' +
+        '</div>';
+
+    var currentHtml = '';
+    var cur = job.current;
+    if (cur) {
+      var tp = cur.track_progress || { done: 0, total: 0 };
+      var trackBar = tp.total > 0
+        ? '<div class="mt-2">' +
+            '<div class="flex justify-between text-xs text-gray-400 mb-1">' +
+              '<span>Track enrichment</span>' +
+              '<span>' + tp.done + ' / ' + tp.total + '</span>' +
+            '</div>' +
+            '<div class="w-full bg-gray-700 rounded-full h-1.5">' +
+              '<div class="bg-green-500 h-1.5 rounded-full transition-all duration-500" style="width:' + Math.round(tp.done / tp.total * 100) + '%"></div>' +
+            '</div>' +
+          '</div>'
+        : '';
+      currentHtml =
+        '<div class="mt-4 pt-4 border-t border-gray-800">' +
+          '<div class="text-xs text-gray-400 mb-1">Current playlist</div>' +
+          '<div class="text-sm font-medium text-gray-100 truncate">' + cur.playlist_name + '</div>' +
+          '<div class="text-xs text-gray-400 mt-1">' + (cur.stage || '…') + '</div>' +
+          trackBar +
+        '</div>';
+    }
+
+    var statusLabel = job.status === 'running' ? 'Running' : (job.status === 'complete' ? 'Done' : 'Failed');
+    var statusColor = job.status === 'running' ? 'text-blue-400' : (job.status === 'complete' ? 'text-green-400' : 'text-red-400');
+
+    document.getElementById('sync-detail-content').innerHTML =
+      '<div class="flex items-center justify-between mb-4">' +
+        '<div>' +
+          '<span class="text-base font-semibold">' + job.label + '</span>' +
+          '<span class="ml-2 text-xs ' + statusColor + '">' + statusLabel + '</span>' +
+        '</div>' +
+        '<button onclick="closeSyncDetail()" class="text-gray-400 hover:text-white text-xl leading-none">&times;</button>' +
+      '</div>' +
+      '<div>' +
+        '<div class="flex justify-between text-xs text-gray-400 mb-1">' +
+          '<span>Playlists</span>' +
+          '<span>' + done + ' / ' + (total || '?') + '</span>' +
+        '</div>' +
+        playlistBar +
+      '</div>' +
+      currentHtml;
+  }
+
+  // ── Playlist sync preview modal ──────────────────────────────────────────
+
+  var IGNORE_PLAYLIST_URL_TEMPLATE = '{% url "ignore_playlist" playlist_id="__PL_ID__" %}';
+
+  function openPlaylistPreview() {
+    fetch('{% url "playlist_sync_preview" %}')
+      .then(function(r) { return r.status === 200 ? r.text() : null; })
+      .then(function(html) {
+        if (!html) return;  // 204 — nothing pending
+        document.getElementById('playlist-preview-content').innerHTML = html;
+        document.getElementById('playlist-preview-modal').classList.remove('hidden');
+      });
+  }
+
+  function closePlaylistPreview() {
+    document.getElementById('playlist-preview-modal').classList.add('hidden');
+  }
+
+  function plPreviewToggleAll(cb) {
+    document.querySelectorAll('.pl-preview-cb').forEach(function(c) { c.checked = cb.checked; });
+    plPreviewUpdateCount();
+  }
+
+  function plPreviewUpdateCount() {
+    var n = document.querySelectorAll('.pl-preview-cb:checked').length;
+    document.getElementById('pl-preview-sync-count').textContent = n;
+    document.getElementById('pl-preview-sync-btn').disabled = n === 0;
+  }
+
+  function ignorePlaylist(playlistId) {
+    fetch(IGNORE_PLAYLIST_URL_TEMPLATE.replace('__PL_ID__', playlistId), {
+      method: 'POST',
+      headers: { 'X-CSRFToken': getCsrfToken() },
+    }).then(function(r) {
+      if (!r.ok) return;
+      var row = document.getElementById('pl-preview-row-' + playlistId);
+      if (row) row.remove();
+      if (!document.querySelector('.pl-preview-cb')) {
+        closePlaylistPreview();
+      } else {
+        plPreviewUpdateCount();
+      }
+    });
+  }
+
+  function syncSelectedPlaylists() {
+    var ids = Array.prototype.map.call(
+      document.querySelectorAll('.pl-preview-cb:checked'),
+      function(c) { return c.value; }
+    );
+    if (!ids.length) return;
+
+    var body = new URLSearchParams();
+    ids.forEach(function(id) { body.append('playlist_ids', id); });
+
+    fetch('{% url "sync_selected_playlists" %}', {
+      method: 'POST',
+      headers: { 'X-CSRFToken': getCsrfToken() },
+      body: body,
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      closePlaylistPreview();
+      var statusUrl = SYNC_STATUS_URL_TEMPLATE.replace('__JOB_ID__', data.job_id);
+      registerJob(data.job_id, 'Playlist Tracks Sync', statusUrl);
+      _jobs[data.job_id]._onComplete = function(result) {
+        htmx.ajax('GET', '{% url "playlists_grid" %}', { target: '#playlists-grid', swap: 'innerHTML' });
+        if (result.status === 'complete') {
+          var stats = result.stats;
+          var errorCount = stats.errors ? stats.errors.length : 0;
+          showToast({
+            message: 'Playlist tracks sync complete: ' + (stats.synced || 0) + ' playlist(s), +' + (stats.added || 0) + ' tracks' +
+                     (errorCount ? ' (' + errorCount + ' error' + (errorCount !== 1 ? 's' : '') + ')' : ''),
+            type: errorCount > 0 ? 'warning' : 'success', persistent: true,
+          });
+        } else {
+          showToast({ message: 'Playlist tracks sync failed', type: 'error', persistent: true });
+        }
+      };
+    })
+    .catch(function() {
+      showToast({ message: 'Failed to start playlist tracks sync', type: 'error', persistent: true });
+    });
+  }
+
   document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
+      closeSyncDetail();
       closeSyncSummary();
+      closePlaylistPreview();
       closeModal();
     }
   });

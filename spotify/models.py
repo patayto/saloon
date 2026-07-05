@@ -105,6 +105,10 @@ class Playlist(models.Model):
         null=True, blank=True,
         help_text="When tracks were last successfully delta-synced for this playlist.",
     )
+    ignored = models.BooleanField(
+        null=True, blank=True, default=None,
+        help_text="True when the user explicitly excluded this playlist from future syncs.",
+    )
 
     def __str__(self):
         return self.name
