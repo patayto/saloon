@@ -144,12 +144,14 @@
     else _slot2Id = trackId;
 
     htmx.ajax('GET', '{% url "mashup_track_detail" track_id="__ID__" %}'.replace('__ID__', trackId), {
+      source: '#slot-' + slot + '-panel',
       target: '#slot-' + slot + '-panel',
       swap: 'innerHTML'
     });
 
     if (_slot1Id && _slot2Id) {
       htmx.ajax('GET', '{% url "mashup_compat" %}?t1=' + _slot1Id + '&t2=' + _slot2Id, {
+        source: '#compat-panel',
         target: '#compat-panel',
         swap: 'innerHTML'
       });
@@ -172,6 +174,12 @@
       setTimeout(syncCompatLayout, 30);
     }
   });
+
+  window.openMashupPair = function(t1Id, t1Name, t2Id, t2Name) {
+    openMashupExplorer();
+    selectTrack(1, t1Id, t1Name);
+    selectTrack(2, t2Id, t2Name);
+  };
 
   // Pre-fill both slots from a pair stashed by a track's mashup suggestions list.
   window.consumeMashupPair = function() {

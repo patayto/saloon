@@ -10,7 +10,7 @@ A personal Spotify library browser and analyser.
 - Mood timeline and genre analytics with Chart.js visualisation
 - Mashup partner suggestions (KNN over audio features + lyric embeddings)
 - Save any non-library track (e.g. a mashup suggestion) to your Spotify library in one click from its detail modal — runs the full ingestion pipeline in the background (audio features → lyrics → tags) with live per-stage progress
-- Mashup tab: compare any two library tracks side by side with a compatibility score (0–100), per-feature diffs, and hover notes based on harmonic rules
+- Mashup tab: compare any two library tracks side by side with a compatibility score (0–100), per-feature diffs, and hover notes based on harmonic rules. Save pairs to a list on the main tab; clicking a saved pair's row reopens the comparison
 - Background sync jobs with live progress panel in the UI
 - Newly ingested tracks are enriched automatically — audio features and lyrics are fetched in parallel, with exponential backoff on rate limits (a throttled track is skipped, never the whole run)
 - LLM-generated tags per track across five axes — mood, theme, scene, style, and tempo feel — with confidence scores (via OpenRouter)

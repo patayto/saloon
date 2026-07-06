@@ -14,7 +14,8 @@
     </thead>
     <tbody class="divide-y divide-gray-800/50">
       {% for pair in pairs %}
-      <tr class="group hover:bg-gray-800/30 transition-colors">
+      <tr class="group hover:bg-gray-800/30 transition-colors cursor-pointer"
+        onclick="openMashupPair('{{ pair.track1.id }}', '{{ pair.track1.name|escapejs }}', '{{ pair.track2.id }}', '{{ pair.track2.name|escapejs }}')">
         <td class="py-2.5 pr-4">
           <p class="text-gray-200 truncate max-w-[220px]">{{ pair.track1.name }}</p>
           <p class="text-gray-500 text-xs truncate max-w-[220px]">
@@ -45,7 +46,7 @@
         </td>
         <td class="py-2.5 pr-4 text-right text-xs text-gray-500 tabular-nums">{{ pair.saved_at|date:"Y-m-d" }}</td>
         <td class="py-2.5 text-right">
-          <form hx-post="{% url 'mashup_delete_pair' pair.id %}" hx-target="#mashup-pairs-container" hx-swap="innerHTML" class="inline">
+          <form hx-post="{% url 'mashup_delete_pair' pair.id %}" hx-target="#mashup-pairs-container" hx-swap="innerHTML" class="inline" onclick="event.stopPropagation()">
             {% csrf_token %}
             <button type="submit"
               class="opacity-0 group-hover:opacity-100 text-gray-600 hover:text-red-400 transition-all p-1 rounded"
