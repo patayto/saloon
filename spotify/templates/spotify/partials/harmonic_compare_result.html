@@ -1,0 +1,27 @@
+{% if error %}
+  <div class="rounded-lg bg-gray-800/50 border border-gray-700 px-3 py-2 text-xs text-red-400">{{ error }}</div>
+
+{% elif job_id %}
+  <div
+    hx-get="{% url 'harmonic_compare_status' job_id %}"
+    hx-trigger="every 1.5s"
+    hx-target="#harmonic-result"
+    hx-swap="innerHTML"
+    class="inline-flex items-center gap-2 text-sm text-gray-400"
+  >
+    <svg class="w-4 h-4 animate-spin shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+    </svg>
+    <span class="text-xs">{{ stage|default:"Starting…" }}…</span>
+  </div>
+
+{% elif score is not None %}
+  <div class="rounded-lg border px-3 py-2 text-sm
+    {% if score >= 75 %}border-green-700 bg-green-900/20 text-green-300
+    {% elif score >= 50 %}border-yellow-700 bg-yellow-900/20 text-yellow-300
+    {% elif score >= 25 %}border-orange-700 bg-orange-900/20 text-orange-300
+    {% else %}border-red-700 bg-red-900/20 text-red-300{% endif %}">
+    Harmonic rhythm match: <span class="font-semibold">{{ score }}/100</span>
+  </div>
+{% endif %}

@@ -1,8 +1,10 @@
 import logging
+import os
 import tempfile
 import threading
 import time
 import traceback
+import unicodedata
 import urllib.parse
 import uuid
 
@@ -1429,3 +1431,107 @@ def mashup_delete_pair(request: HttpRequest, pair_id: int) -> HttpResponse:
         .all()
     )
     return render(request, "spotify/partials/mashup_pairs.html", {"pairs": pairs})
+
+
+# Real-world filenames (curly vs straight quotes, emoji variation selectors,
+# accents composed differently) rarely survive being retyped or pasted
+# byte-for-byte. Resolve each path segment against the real directory listing
+# under a loose Unicode-normalized comparison instead of matching the exact
+# literal string.
+_QUOTE_MAP = str.maketrans({"‘": "'", "’": "'", "“": '"', "”": '"'})
+_VARIATION_SELECTORS = (0xFE0E, 0xFE0F)
+
+
+def _normalize_for_match(s: str) -> str:
+    s = unicodedata.normalize("NFC", s).translate(_QUOTE_MAP)
+    return "".join(c for c in s if ord(c) not in _VARIATION_SELECTORS).casefold()
+
+
+def _resolve_audio_path(path: str) -> str | None:
+    if os.path.isfile(path):
+        return path
+    if not path.startswith(os.sep):
+        return None
+
+    current = os.sep
+    for part in path.split(os.sep)[1:]:
+        try:
+            entries = os.listdir(current)
+        except OSError:
+            return None
+        target = _normalize_for_match(part)
+        match = next((e for e in entries if _normalize_for_match(e) == target), None)
+        if match is None:
+            return None
+        current = os.path.join(current, match)
+    return current if os.path.isfile(current) else None
+
+
+def harmonic_compare(request: HttpRequest) -> HttpResponse:
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+
+    resolved = []
+    for p in (request.POST.get("path1", "").strip(), request.POST.get("path2", "").strip()):
+        found = _resolve_audio_path(p) if p else None
+        if not found:
+            return render(
+                request,
+                "spotify/partials/harmonic_compare_result.html",
+                {"error": f"File not found: {p or '(empty)'}"},
+            )
+        resolved.append(found)
+    path1, path2 = resolved
+
+    job_id = str(uuid.uuid4())
+    _sync_jobs[job_id] = {"status": "running", "stage": "Loading audio"}
+
+    def _stage_cb(stage: str) -> None:
+        _sync_jobs[job_id]["stage"] = stage
+
+    def _run():
+        try:
+            from analysis.harmonic import score_harmonic_similarity
+
+            result = score_harmonic_similarity(path1, path2, stage_cb=_stage_cb)
+            _sync_jobs[job_id].update({"status": "complete", "score": result["score"]})
+        except Exception:
+            logger.exception("harmonic_compare failed for %s / %s", path1, path2)
+            _sync_jobs[job_id].update(
+                {"status": "error", "error": "Analysis failed — check the server log."}
+            )
+
+    threading.Thread(target=_run, daemon=True).start()
+
+    return render(
+        request,
+        "spotify/partials/harmonic_compare_result.html",
+        {"job_id": job_id, "stage": _sync_jobs[job_id]["stage"]},
+    )
+
+
+def harmonic_compare_status(request: HttpRequest, job_id: str) -> HttpResponse:
+    job = _sync_jobs.get(job_id)
+    if job is None:
+        return render(
+            request,
+            "spotify/partials/harmonic_compare_result.html",
+            {"error": "Job not found (server may have restarted)."},
+        )
+    if job["status"] == "error":
+        return render(
+            request,
+            "spotify/partials/harmonic_compare_result.html",
+            {"error": job.get("error", "Analysis failed.")},
+        )
+    if job["status"] == "running":
+        return render(
+            request,
+            "spotify/partials/harmonic_compare_result.html",
+            {"job_id": job_id, "stage": job.get("stage")},
+        )
+    return render(
+        request,
+        "spotify/partials/harmonic_compare_result.html",
+        {"score": job["score"]},
+    )

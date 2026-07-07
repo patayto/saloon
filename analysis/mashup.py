@@ -29,6 +29,10 @@ def _key_compat(ak: int, am: int, bk: int, bm: int) -> str:
         return "compatible"
     if a_num == b_num:  # relative major/minor pair
         return "compatible"
+    semitone_diff = abs(ak - bk) % 12
+    semitone_diff = min(semitone_diff, 12 - semitone_diff)
+    if semitone_diff <= 2:  # e.g. F/F#: 5 Camelot steps apart but a semitone shift away
+        return "compatible"
     return "incompatible"
 
 
@@ -125,7 +129,7 @@ def compute_pairwise_compat(af1: "AudioFeatures", af2: "AudioFeatures") -> dict:
 
     key_tips = {
         "perfect": f"Perfect key match ({c1_num}{c1_let} = {c2_num}{c2_let}) — fully harmonic",
-        "compatible": f"Compatible keys ({c1_num}{c1_let} / {c2_num}{c2_let}) — Camelot-adjacent, minor key tension",
+        "compatible": f"Compatible keys ({c1_num}{c1_let} / {c2_num}{c2_let}) — closely related or a small pitch shift apart, minor key tension",
         "incompatible": f"Incompatible keys ({c1_num}{c1_let} / {c2_num}{c2_let}) — will clash harmonically",
     }
 

@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 FROM python:3.13-slim
 
 WORKDIR /app
@@ -5,7 +6,8 @@ WORKDIR /app
 RUN pip install uv --quiet
 
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen
 
 COPY . .
 

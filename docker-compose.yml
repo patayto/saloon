@@ -6,3 +6,4 @@ services:
     env_file: .env
     volumes:
       - ./db.sqlite3:/app/db.sqlite3
+      - /Users/filipe/workspace/mashups/sources:/Users/filipe/workspace/mashups/sources:ro

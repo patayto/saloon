@@ -1,5 +1,45 @@
 {% load spotify_extras %}
 
+<!-- Harmonic Compare modal -->
+<div id="harmonic-modal" class="hidden fixed inset-0 z-50 bg-black/80 flex items-center justify-center px-4">
+  <div class="bg-gray-900 border border-gray-800 rounded-xl w-full max-w-md">
+    <div class="flex items-center justify-between px-5 py-3 border-b border-gray-800">
+      <h3 class="text-sm font-semibold text-gray-200">Harmonic Compare</h3>
+      <button onclick="closeHarmonicCompare()"
+        class="text-gray-500 hover:text-gray-200 transition-colors p-1 rounded hover:bg-gray-800">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+    <div class="p-5 space-y-3">
+      <p class="text-xs text-gray-500">Compares harmonic rhythm (chord-change timing) between two local audio files via chromagram + DTW alignment. Point at instrumentals for the cleanest result.</p>
+      <div>
+        <label class="text-xs text-gray-500">File 1</label>
+        <input id="harmonic-path-1" name="path1" type="text" placeholder="/path/to/track1.wav"
+          oninput="localStorage.setItem('harmonicPath1', this.value)"
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm placeholder-gray-500 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500">
+      </div>
+      <div>
+        <label class="text-xs text-gray-500">File 2</label>
+        <input id="harmonic-path-2" name="path2" type="text" placeholder="/path/to/track2.wav"
+          oninput="localStorage.setItem('harmonicPath2', this.value)"
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm placeholder-gray-500 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500">
+      </div>
+      <button type="button"
+        hx-post="{% url 'harmonic_compare' %}"
+        hx-include="#harmonic-path-1,#harmonic-path-2"
+        hx-target="#harmonic-result"
+        hx-swap="innerHTML"
+        hx-on:htmx:before-request="this.disabled=true"
+        hx-on:htmx:after-request="this.disabled=false"
+        class="inline-flex items-center gap-2 bg-green-700 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded font-medium text-sm transition-colors"
+      >Compare</button>
+      <div id="harmonic-result" class="pt-1"></div>
+    </div>
+  </div>
+</div>
+
 <!-- Explore Tracks modal -->
 <div id="mashup-explorer-modal" class="hidden fixed inset-0 z-50 bg-black/80 flex items-start justify-center pt-8 px-4 pb-4">
   <div class="bg-gray-900 border border-gray-800 rounded-xl w-full max-w-[1400px] flex flex-col" style="max-height: calc(100vh - 4rem)">
@@ -73,13 +113,22 @@
 <!-- Main view: saved pairs -->
 <div class="flex items-center justify-between mb-5">
   <h2 class="text-base font-semibold text-white">Saved Mashups</h2>
-  <button onclick="openMashupExplorer()"
-    class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium bg-green-700 hover:bg-green-600 text-white transition-colors">
-    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-    </svg>
-    Explore tracks
-  </button>
+  <div class="flex items-center gap-2">
+    <button onclick="openHarmonicCompare()"
+      class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 transition-colors">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19a3 3 0 11-6 0 3 3 0 016 0zm12-3a3 3 0 11-6 0 3 3 0 016 0z"/>
+      </svg>
+      Harmonic Compare
+    </button>
+    <button onclick="openMashupExplorer()"
+      class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium bg-green-700 hover:bg-green-600 text-white transition-colors">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+      </svg>
+      Explore tracks
+    </button>
+  </div>
 </div>
 
 <div id="mashup-pairs-container"
@@ -94,6 +143,21 @@
   var _slot1Id = '';
   var _slot2Id = '';
   var _debounceTimers = {};
+
+  window.openHarmonicCompare = function() {
+    document.getElementById('harmonic-path-1').value = localStorage.getItem('harmonicPath1') || '';
+    document.getElementById('harmonic-path-2').value = localStorage.getItem('harmonicPath2') || '';
+    document.getElementById('harmonic-result').innerHTML = '';
+    document.getElementById('harmonic-modal').classList.remove('hidden');
+  };
+
+  window.closeHarmonicCompare = function() {
+    document.getElementById('harmonic-modal').classList.add('hidden');
+  };
+
+  document.getElementById('harmonic-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeHarmonicCompare();
+  });
 
   window.openMashupExplorer = function() {
     document.getElementById('mashup-explorer-modal').classList.remove('hidden');
