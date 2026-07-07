@@ -109,6 +109,23 @@ class CallApiWithRetryTests(TestCase):
             _call_api_with_retry("msg", ["a", "b"], "url")
         self.assertEqual(calls, ["b"])
 
+    def test_chunked_encoding_error_moves_to_next_model_and_sets_cooldown(self):
+        calls = []
+
+        def fake_call(msg, model, url):
+            calls.append(model)
+            if model == "a":
+                raise requests.exceptions.ChunkedEncodingError("Response ended prematurely")
+            return {"mood": {}}
+
+        with patch(
+            "analysis.management.commands.compute_track_tags._call_api", fake_call
+        ):
+            result = _call_api_with_retry("msg", ["a", "b"], "url")
+        self.assertEqual(result, {"mood": {}})
+        self.assertEqual(calls, ["a", "b"])
+        self.assertIn("a", _cooldowns)
+
     def test_long_retry_after_fails_fast(self):
         def fake_call(msg, model, url):
             raise self._http_error(429, {"Retry-After": "3600"})

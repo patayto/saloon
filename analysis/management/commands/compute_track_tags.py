@@ -132,6 +132,22 @@ ALLOWED = {
         "hypnotic",
         "explosive",
     ),
+    # Person deixis: who the lyrics are grammatically addressed to/about.
+    "perspective": (
+        "direct_address_i_to_you",
+        "internal_monologue_i",
+        "observational_third_person",
+        "collective_we",
+        "abstract_conceptual",
+    ),
+    # Psychological stance the lyrics put a listener into, given "perspective".
+    "listener_role": (
+        "the_confidant",
+        "the_target",
+        "the_surrogate",
+        "the_voyeur",
+        "the_participant",
+    ),
 }
 
 # Fingerprint of the vocabulary; changes automatically whenever ALLOWED is edited.
@@ -162,15 +178,23 @@ _cooldowns: dict[
 class TransientAPIError(Exception):
     """2xx response whose body is an error payload instead of a completion."""
 
+
 _SYSTEM_PROMPT = (
     "You are a music analyst. Given a track's metadata, audio features, and lyrics, "
-    "return a JSON object with exactly five keys: mood, theme, scene, style, tempo_feel. "
+    "return a JSON object with exactly seven keys: mood, theme, scene, style, tempo_feel, "
+    "perspective, listener_role. "
     "Each value is an object mapping tags to a confidence score between 0 and 1. Prefer "
     "tags from the allowed values below; if a clearly applicable tag is missing from an "
     "axis, you may add up to 2 extra tags for that axis — a short lowercase snake_case "
-    "concept (e.g. vulnerability, slow_burn), never a sentence. Include only tags that "
-    "clearly apply (confidence 0.5 or higher) — most tracks warrant 2–4 tags per axis. "
-    "Score honestly; do not pad. Return only the JSON object, nothing else.\n\n"
+    "concept (e.g. vulnerability, slow_burn), never a sentence.\n\n"
+    "For mood, theme, scene, style, tempo_feel: include only tags that clearly apply "
+    "(confidence 0.5 or higher) — most tracks warrant 2–4 tags per axis. Score honestly; "
+    "do not pad.\n\n"
+    "For perspective and listener_role: these capture person deixis (who the lyrics are "
+    "grammatically addressed to/about) and the psychological stance that structure puts "
+    "the listener into. A track usually has one dominant tag per axis — only include a "
+    "second if the song genuinely shifts perspective partway through.\n\n"
+    "Return only the JSON object, nothing else.\n\n"
     + "\n".join(f"{axis}: {', '.join(vals)}" for axis, vals in ALLOWED.items())
 )
 
@@ -288,6 +312,19 @@ def _call_api_with_retry(
                 _cooldowns[model] = time.time() + _COOLDOWN_5XX
                 logger.warning(
                     "Model %s: error body in 200 (%s) — cooldown %ds, next model",
+                    model,
+                    e,
+                    _COOLDOWN_5XX,
+                )
+            except (
+                requests.exceptions.ChunkedEncodingError,
+                requests.exceptions.ConnectionError,
+            ) as e:
+                # Connection dropped mid-response (free models truncate streams
+                # under load) — same treatment as a 5xx, not a hard failure.
+                _cooldowns[model] = time.time() + _COOLDOWN_5XX
+                logger.warning(
+                    "Model %s: connection dropped (%s) — cooldown %ds, next model",
                     model,
                     e,
                     _COOLDOWN_5XX,

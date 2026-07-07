@@ -13,7 +13,7 @@
     <span class="text-xs">{{ status_label }}</span>
   </div>
 {% elif tags and tags.tags %}
-  {% with mood=tags.tags.mood theme=tags.tags.theme scene=tags.tags.scene style=tags.tags.style tempo_feel=tags.tags.tempo_feel %}
+  {% with mood=tags.tags.mood theme=tags.tags.theme scene=tags.tags.scene style=tags.tags.style tempo_feel=tags.tags.tempo_feel perspective=tags.tags.perspective listener_role=tags.tags.listener_role %}
   <div class="space-y-2">
 
     {% if mood %}
@@ -57,6 +57,24 @@
       <span class="text-xs text-gray-500 w-12 shrink-0">Feel</span>
       {% for t, s in tempo_feel|sort_tags %}
         <span title="score {{ s }}" class="px-2 py-0.5 rounded-full text-xs font-medium bg-rose-900/60 text-rose-300 border border-rose-700/50">{{ t }}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if perspective %}
+    <div class="flex flex-wrap items-center gap-1.5">
+      <span class="text-xs text-gray-500 w-12 shrink-0">POV</span>
+      {% for t, s in perspective|sort_tags %}
+        <span title="score {{ s }}" class="px-2 py-0.5 rounded-full text-xs font-medium bg-cyan-900/60 text-cyan-300 border border-cyan-700/50">{{ t }}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if listener_role %}
+    <div class="flex flex-wrap items-center gap-1.5">
+      <span class="text-xs text-gray-500 w-12 shrink-0">Listener</span>
+      {% for t, s in listener_role|sort_tags %}
+        <span title="score {{ s }}" class="px-2 py-0.5 rounded-full text-xs font-medium bg-fuchsia-900/60 text-fuchsia-300 border border-fuchsia-700/50">{{ t }}</span>
       {% endfor %}
     </div>
     {% endif %}

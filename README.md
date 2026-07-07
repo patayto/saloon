@@ -13,7 +13,7 @@ A personal Spotify library browser and analyser.
 - Mashup tab: compare any two library tracks side by side with a compatibility score (0–100), per-feature diffs, and hover notes based on harmonic rules. Save pairs to a list on the main tab; clicking a saved pair's row reopens the comparison
 - Background sync jobs with live progress panel in the UI
 - Newly ingested tracks are enriched automatically — audio features and lyrics are fetched in parallel, with exponential backoff on rate limits (a throttled track is skipped, never the whole run)
-- LLM-generated tags per track across five axes — mood, theme, scene, style, and tempo feel — with confidence scores (via OpenRouter)
+- LLM-generated tags per track across seven axes — mood, theme, scene, style, tempo feel, perspective, and listener role — with confidence scores (via OpenRouter)
 - Filter the library by any tag (e.g. mood:melancholic)
 - Graph view: group nodes by tag axis to form clusters, or filter to a single tag value
 - Mashup view: overlapping tags highlighted in the compatibility column
@@ -92,12 +92,12 @@ docker compose exec web .venv/bin/python manage.py <command>
 | `sync_playlist_tracks <id>` | Per-playlist delta sync (adds/removes/reorders tracks) |
 | `compute_sentiment` | VADER sentiment backfill for tracks with lyrics |
 | `compute_lyric_embeddings` | Ollama lyric embedding backfill (requires Ollama running) |
-| `compute_track_tags` | LLM tag backfill via OpenRouter across five axes: mood, theme, scene, style, tempo feel (requires `OPENROUTER_API_KEY`); use `--retry` to cycle through free model fallbacks on 429/5xx (including OpenRouter's 200-with-error-body responses); `--workers N` to tag N tracks concurrently (default 5); `--refresh-stale` to re-tag tracks tagged under an older vocabulary |
+| `compute_track_tags` | LLM tag backfill via OpenRouter across seven axes: mood, theme, scene, style, tempo feel, perspective, listener role (requires `OPENROUTER_API_KEY`); use `--retry` to cycle through free model fallbacks on 429/5xx (including OpenRouter's 200-with-error-body responses); `--workers N` to tag N tracks concurrently (default 5); `--refresh-stale` to re-tag tracks tagged under an older vocabulary |
 | `backfill_promoted_tags` | Merge recorded out-of-vocabulary tag suggestions into existing track tags after a tag is promoted into the allowed list (no LLM calls) |
 
 ## OpenRouter (optional — track tags)
 
-Tags are generated across five axes per track and stored with per-tag confidence scores:
+Tags are generated across seven axes per track and stored with per-tag confidence scores:
 
 | Axis | What it captures |
 |---|---|
@@ -106,6 +106,8 @@ Tags are generated across five axes per track and stored with per-tag confidence
 | **scene** | Listening context — late_night, road_trip, study_focus, slow_dance, etc. |
 | **style** | Lyrical/vocal delivery — storytelling, confessional, anthemic, poetic, etc. |
 | **tempo_feel** | Perceived motion — driving, swaying, laid_back, hypnotic, etc. |
+| **perspective** | Person deixis — who the lyrics are grammatically addressed to/about: direct address ("I"→"you"), internal monologue, third-person narration, collective "we", or an abstract/no subject |
+| **listener_role** | The psychological stance the lyrics put a listener into given that perspective — confidant, target, surrogate, voyeur, or participant |
 
 Tags appear in the track detail modal, are filterable in the Library tab (tag dropdown next to the search box), drive group-by clustering and per-tag filtering in the Graph tab, and show overlapping tags in the Mashup compatibility column.
 
